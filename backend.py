@@ -68,6 +68,14 @@ def _save_pdf_png_svg(fig, outdir, name):
     return out
 
 
+def _say(progress, msg):
+    if progress:
+        try:
+            progress(msg)
+        except Exception:
+            pass
+
+
 def _scale_row(fig):
     sc = getattr(fig, "_scale_used", None)
     if sc is None:
@@ -127,7 +135,8 @@ def flute_defaults(code, box=None):
 
 
 # ================================================================ 片材
-def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None, scale=None):
+def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None, scale=None,
+              progress=None, full=True):
     from sheet_core import Params, report
     from sheet_draw import build_sheet
     from sheet_make import write_dxf, export_step, write_stl, render_axo
@@ -139,10 +148,18 @@ def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, os.path.join(outdir, pre + "片材轮廓_1-1.dxf"))]
+    _say(progress, "正在出图纸（三视图 + 轴测）…")
     fig = build_sheet(p, meta=frame_meta(frame), scale=scale)
     rows += _scale_row(fig)
     files += _save_pdf_png_svg(fig, outdir, pre + "图纸-三视图+轴测图_A3")
-    files += render_axo(p, os.path.join(outdir, pre + "轴测图"))
+    if full:
+        _say(progress, "正在出独立轴测图…")
+        files += render_axo(p, os.path.join(outdir, pre + "轴测图"))
+    if not full:
+        return Result(files + [_md(outdir, pre + "参数表.md", [
+            f"# {name} 参数表（只出图纸）", "",
+            f"- 外形 {L:g} × {W:g} × {H:g} mm；单面面积 {p.area:.4f} m²；材料：{material or '—'}"])], rows)
+    _say(progress, "正在建三维模型（STEP / STL）…")
     stp = os.path.join(outdir, pre + "三维模型.step")
     bb = export_step(p, stp)
     assert abs((bb[3] - bb[0]) - L) < 0.01 and abs((bb[4] - bb[1]) - W) < 0.01
@@ -163,7 +180,8 @@ def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None
 
 # ================================================================ 仿形垫块
 def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
-              open_side="front", name="仿形块", material="", frame=None, scale=None):
+              open_side="front", name="仿形块", material="", frame=None, scale=None,
+              progress=None, full=True):
     from block_core import Params, report
     from block_model import items, write_dxf, export_step, write_stl, stl_check
     from block_draw import build_sheet, render_axo
@@ -176,10 +194,18 @@ def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, d, os.path.join(outdir, pre + "仿形块俯视_1-1.dxf"))]
+    _say(progress, "正在出图纸（三视图 + 轴测）…")
     fig = build_sheet(p, d, meta=frame_meta(frame), scale=scale)
     rows += _scale_row(fig)
     files += _save_pdf_png_svg(fig, outdir, pre + "图纸-三视图+轴测图_A3")
-    files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
+    if full:
+        _say(progress, "正在出独立轴测图…")
+        files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
+    if not full:
+        return Result(files + [_md(outdir, pre + "参数表.md", [
+            f"# {name} 参数表（只出图纸）", "",
+            f"- 垫块 {L:g} × {W:g} × {H:g}；开槽 {sl:g}×{sw:g}×{sh:g} × {d['n']}；间距 {gap:g}"])], rows, d)
+    _say(progress, "正在建三维模型（STEP / STL）…")
     it = items(p, d)
     stp = os.path.join(outdir, pre + "三维模型.step")
     bb = export_step(stp, it)
@@ -232,7 +258,7 @@ def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
 
 def run_grid(container, cell, t, outdir, prefix="", slot_w=None, sep_t=None,
              pads="both", version=1, name="瓦楞刀卡网格", frame=None, scale=None,
-             price=None):
+             price=None, progress=None, full=True):
     """container=(L,W,H) 容器内尺寸（= 内衬外尺寸）；cell=(l,w,h) 每格；t=刀卡厚。"""
     from grid_model import items, write_dxf, export_step, write_stl, stl_check
     from grid_draw import build_sheet, render_axo
@@ -243,10 +269,19 @@ def run_grid(container, cell, t, outdir, prefix="", slot_w=None, sep_t=None,
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, d, os.path.join(outdir, pre + "刀卡展开图_1-1.dxf"))]
+    _say(progress, "正在出图纸（网格俯视 + 刀卡侧视）…")
     fig = build_sheet(p, d, meta=frame_meta(frame), scale=scale)
     rows += _scale_row(fig)
     files += _save_pdf_png_svg(fig, outdir, pre + "图纸-网格俯视+刀卡侧视+轴测图_A3")
-    files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
+    if full:
+        _say(progress, "正在出独立轴测图…")
+        files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
+    if not full:
+        return Result(files + [_md(outdir, pre + "参数表.md", [
+            f"# {name}（{'V1 长对长' if d['version'] == 1 else 'V2 长对宽'}）参数表（只出图纸）", "",
+            f"- 容器内 {L:g}×{W:g}×{H:g}；格数 {d['n_l']}×{d['n_w']}；层数 {d['layers']}；收容 {d['capacity']}",
+            f"- 长卡 {d['cards_long_total']} 张 / 短卡 {d['cards_short_total']} 张 / 隔板 {d['seps_total']} 张"])], rows, d)
+    _say(progress, "正在建三维模型（STEP / STL）…")
     it = items(p, d)
     stp = os.path.join(outdir, pre + "三维模型-刀卡网格.step")
     bb = export_step(stp, it)
@@ -376,13 +411,31 @@ _CORE_DUP = {"outer L*W*H", "inner", "manufacturer", "assembled outer", "sleeve 
              "base outer", "lid outer / inner", "cap outer / inner"}
 
 
-def _zh_rows(rows, drop_dup=True):
-    """核心 report 行 → 中文键；可去掉与「尺寸链」重复的行。"""
+def _nums_of(v):
+    import re
+    return set(re.findall(r"\d+(?:\.\d+)?", str(v)))
+
+
+def _zh_rows(rows, dim_rows=None, drop_dup=True):
+    """核心 report 行 → 中文键，并去掉与「尺寸链」重复的行。
+
+    根因：核心 report 的键已中文化后，旧的英文黑名单（_CORE_DUP）失效 → 内外/制造尺寸重复出现。
+    改为**按语义+数值**判定：名字含 外/内/制造 且数值全都在尺寸链里出现过的行才丢弃。
+    """
+    dim_digits = set()
+    if dim_rows:
+        for _k, v in dim_rows:
+            dim_digits |= _nums_of(v)
     out = []
     for k, v in rows:
-        if drop_dup and k in _CORE_DUP:
+        kk = KEY_ZH.get(k, k)
+        if k in _CORE_DUP:
             continue
-        out.append((KEY_ZH.get(k, k), v))
+        if drop_dup and dim_digits and any(t in kk for t in ("外", "内", "制造")):
+            d = _nums_of(v)
+            if d and d <= dim_digits:
+                continue
+        out.append((kk, v))
     return out
 
 
@@ -499,7 +552,7 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price
                                           price.get("labor", 0.0), price.get("qty", 1.0))
         rows = rows + [("— 报价（飞书口径）", "")] + qrows
         quote = qtot
-    rows = _zh_rows(rows)
+    rows = _zh_rows(rows, box_dim_rows(box, p))
     nm = name or {"0201": f"FEFCO 0201 开槽箱 {L:g}×{W:g}×{H:g}",
                   "0310": f"FEFCO 0310 围框+两盖 {L:g}×{W:g}×{H:g}",
                   "0312": f"FEFCO 0312 有底无盖+平顶罩盖 {L:g}×{W:g}×{H:g}"}[box]
@@ -526,7 +579,8 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price
                 inner_in=inner_in, name=nm)
 
 
-def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
+def box_export(box, plan, outdir, prefix="", frame=None, scale=None,
+               progress=None, full=True):
     """出图（耗时；界面放到后台线程里跑）。"""
     from box0210_3d import build_items_from, render_view, export_solids, write_stl_file, stl_check
     p, rows = plan["p"], plan["rows"]
@@ -535,6 +589,7 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = []
+    _say(progress, "正在出图纸（展开图 + 轴测）…")
     if box == "0201":
         from box0201_core import panels, open_items
         from box0201_sheets import write_dxf, build_sheet
@@ -544,6 +599,12 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
         fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
         rows += _scale_row(fig)
         files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
+        if not full:
+            return Result(files + [_md(outdir, pre + "参数表.md（只出图纸）"
+                                       if False else pre + "参数表.md",
+                                       [f"# FEFCO 0201 参数表（只出图纸）", ""] +
+                                       [f"- {k}：{v}" for k, v in box_dim_rows(box, p)])], rows)
+        _say(progress, "正在建三维模型（STEP / STL）…")
         stp = os.path.join(outdir, pre + "三维模型-闭合.step")
         bb = export_solids(p, False, stp, items=ic)
         d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -576,6 +637,11 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
         fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
         rows += _scale_row(fig)
         files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
+        if not full:
+            return Result(files + [_md(outdir, pre + "参数表.md",
+                                       [f"# FEFCO 0310 参数表（只出图纸）", ""] +
+                                       [f"- {k}：{v}" for k, v in box_dim_rows(box, p)])], rows)
+        _say(progress, "正在建三维模型（STEP / STL）…")
         stp = os.path.join(outdir, pre + "三维模型-组装.step")
         bb = export_solids(p, False, stp, items=ic)
         d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -608,6 +674,11 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
     fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
     rows += _scale_row(fig)
     files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
+    if not full:
+        return Result(files + [_md(outdir, pre + "参数表.md",
+                                   [f"# FEFCO 0312 参数表（只出图纸）", ""] +
+                                   [f"- {k}：{v}" for k, v in box_dim_rows(box, p)])], rows)
+    _say(progress, "正在建三维模型（STEP / STL）…")
     stp = os.path.join(outdir, pre + "三维模型-组装.step")
     bb = export_solids(p, False, stp, items=ic)
     d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -633,10 +704,12 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
 
 
 def run_box(box, dims, outdir, mode="outer", flutes=None, params=None,
-            prefix="", name=None, frame=None, scale=None, price=None):
+            prefix="", name=None, frame=None, scale=None, price=None,
+            progress=None, full=True):
     """box: '0201' | '0310' | '0312'；dims=(L,W,H) 外尺寸(mode='outer')或内腔(mode='inner')。"""
     plan = box_plan(box, dims, mode=mode, flutes=flutes, params=params, name=name, price=price)
-    return box_export(box, plan, outdir, prefix=prefix, frame=frame, scale=scale)
+    return box_export(box, plan, outdir, prefix=prefix, frame=frame, scale=scale,
+                      progress=progress, full=full)
 
 
 def price_lib_rows(d):

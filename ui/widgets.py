@@ -324,6 +324,38 @@ def open_path(path):
     return False
 
 
+class CompareTable(QTableWidget):
+    """横向对比表：第一列指标，其余列各方案（V1 / V2 …）。"""
+
+    def __init__(self, headers, parent=None):
+        super().__init__(0, len(headers), parent)
+        self.setHorizontalHeaderLabels(list(headers))
+        self.verticalHeader().setVisible(False)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.setSelectionMode(QTableWidget.ContiguousSelection)
+        self.setFocusPolicy(Qt.ClickFocus)
+        self.setShowGrid(True)
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.setWordWrap(False)
+
+    def set_matrix(self, rows):
+        self.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, v in enumerate(row):
+                it = QTableWidgetItem(str(v))
+                if j == 0:
+                    f = it.font()
+                    f.setBold(True)
+                    it.setFont(f)
+                else:
+                    mono(it, 10)
+                    it.setTextAlignment(Qt.AlignCenter)
+                self.setItem(i, j, it)
+        self.resizeColumnsToContents()
+        self.horizontalHeader().setStretchLastSection(True)
+
+
 # ================================================================ 表格化表单（v1.0.1）
 class Row(QWidget):
     """标签在左、控件在右的一行（紧凑表格化）。"""

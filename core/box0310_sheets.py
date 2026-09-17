@@ -83,6 +83,22 @@ def param_lines_zh(p: Params, mat_sleeve: str = "BC 双瓦楞纸板",
     ]
 
 
+def _fits(txt, strip_mm, fontsize, min_mm=1.0):
+    """板面文字在图纸上是否放得下（纸面 mm）。"""
+    est = 0.0
+    for ch in str(txt):
+        est += fontsize * 0.3528 * (1.0 if ord(ch) > 0x2E80 else 0.55)
+    return est <= strip_mm - min_mm
+
+
+def _put(ax, x, y, txt, strip_mm, fontsize, color="0.15", min_mm=1.0):
+    """放得下才画：宁可少一个板面字，也不让它压折线。"""
+    if _fits(txt, strip_mm, fontsize, min_mm):
+        ax.text(x, y, txt, fontsize=fontsize, ha="center", va="center", color=color)
+        return True
+    return False
+
+
 def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
     meta = meta or {}
@@ -130,7 +146,9 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
              (xm(ls["X4"], ls["X5"]), si_s["blank_h"] / 2, "墙 L")]
     for (lx, ly, s) in lab_s:
         sx, sy = T1(lx, ly)
-        ax.text(sx, sy, s, ha="center", va="center", fontsize=6.2, color="0.15")
+        _strip = (ls["X1"] if s == "粘舌" else
+                  (ls["X2"] - ls["X1"] if s == "墙 W" else ls["X3"] - ls["X2"]))
+        _put(ax, sx, sy, s, _strip / scale, 6.2)
     for (a, b) in ((0, ls["X1"]), (ls["X1"], ls["X2"]), (ls["X2"], ls["X3"]), (ls["X3"], ls["X4"]), (ls["X4"], ls["X5"])):
         dim_h(ax, T1(a, 0)[0], T1(b, 0)[0], oy - 8.0, g(b - a))
     dim_h(ax, T1(0, 0)[0], T1(ls["X5"], 0)[0], oy - 17.0, "展开长 " + g(ls["X5"]))
@@ -163,7 +181,8 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                  (wb / 2, gs["H1"] - wb / 2, "角片"), (wb / 2, wb / 2, "角片")]
         for (lx, ly, s) in lab_c:
             sx, sy = T2(lx, ly)
-            ax.text(sx, sy, s, ha="center", va="center", fontsize=5.6, color="0.15")
+            _strip = wb if s != "盖顶板" else min(p.cap_Lm, p.cap_Wm)
+            _put(ax, sx, sy, s, _strip / scale, 5.6)
         cap_name = ("下盖" if k == 0 else "上盖（与下盖同款）") if same_caps else ("下盖" if k == 0 else "上盖")
         ax.text(ox2, oy2 + gs["H1"] / scale + 5, cap_name, fontsize=7.0, ha="left", color="0.1")
         if k == 0 or not same_caps:
@@ -191,7 +210,7 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
         meta.get("mat_cap_bot"))
     for i, s in enumerate(lines):
         ax.text(38.0, 84.0 - i * 4.0, s, ha="left", va="top", fontsize=6.2, color="0.1")
-    ax.text(38.0, 6.5, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
+    ax.text(38.0, 14.0, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
 
     from box0310_core import panels, lift_items
     from box0210_3d import add_iso_panels, build_items_from

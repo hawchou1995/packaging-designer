@@ -34,7 +34,11 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     if manual:
         sc = float(scale)
     else:
-        sc = min(_pick(p.L + 16 + p.W, 244.0), _pick(p.H, 56.0), _pick(p.W, 86.0))
+        # 三条约束都要满足 → 取**最大**分母（最小图），不是 min
+        #   横向：主视图 L + 16 + 左视图 W ≤ 244mm
+        #   上界：主视图高 H + 标注带 ≤ 48mm（FY=212，上界 272）
+        #   下界：俯视图宽 W ≤ 86mm（保证注释块落在 y≥20）
+        sc = max(_pick(p.L + 16 + p.W, 244.0), _pick(p.H, 48.0), _pick(p.W, 86.0))
     fig._scale_used, fig._scale_auto = sc, not manual
     draw_frame(fig, page=page, name=f"{p.name} {p.L:g}×{p.W:g}×{p.H:g}",
                material=(p.material or "—"), dwgno=f"BLK-{p.L:g}x{p.W:g}x{p.H:g}",
@@ -75,7 +79,7 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     dim_v(ax, Tf(0, 0)[1], Tf(0, p.H)[1], Tf(-20, 0)[0], f"{p.H:g}", fs=7, off=-0.6)
     s0 = d["slots"][0]
     dim_h(ax, Tf(s0[0], p.H + 26)[0], Tf(s0[1], p.H + 26)[0], Tf(0, p.H + 26)[1], f"{p.sl:g}", fs=7)
-    ax.text(*Tf(p.L / 2, -13), "主视图", fontsize=8, ha="center", va="top")
+    ax.text(Tf(p.L / 2, 0)[0], Tf(0, 0)[1] - 2.6, "主视图", fontsize=8, ha="center", va="top")
 
     # ---- 俯视图：槽位布置 + 边距 ----
     ax.plot(*zip(Tt(0, 0), Tt(p.L, 0), Tt(p.L, p.W), Tt(0, p.W), Tt(0, 0)), color="k", lw=0.8)
@@ -95,7 +99,7 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     dim_v(ax, Tt(0, 0)[1], Tt(0, p.W)[1], Tt(-20, 0)[0], f"{p.W:g}", fs=7, off=-0.6)
     if not d["through"]:
         dim_v(ax, Tt(b0 - 4, d["sy0"])[1], Tt(b0 - 4, d["sy1"])[1], Tt(b0 - 4, 0)[0], f"{p.sw:g}", fs=6.4, off=1.5)
-    ax.text(*Tt(p.L / 2, -88), f"俯视图（开槽 {d['n']} 个 · 间距 {p.gap:g}）",
+    ax.text(Tt(p.L / 2, 0)[0], Tt(0, 0)[1] - 2.6, f"俯视图（开槽 {d['n']} 个 · 间距 {p.gap:g}）",
             fontsize=8, ha="center", va="top")
 
     # ---- 左视图（第一角，前=右侧）：外形全高 W×H；槽为后置隐藏轮廓（虚线） ----
@@ -115,7 +119,7 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     dim_v(ax, Tq(0, 0)[1], Tq(0, p.H)[1], Tq(-22, 0)[0], f"{p.H:g}", fs=7, off=-0.6)
     dim_v(ax, Tq(0, p.H)[1], Tq(0, p.H - p.sh)[1], Tq(d["sw_eff"] / 2, 0)[0], f"{p.sh:g}", fs=6.4, off=1.5)
     dim_h(ax, Tq(0, p.H + 12)[0], Tq(p.W, p.H + 12)[0], Tq(0, p.H + 12)[1], f"{p.W:g}", fs=7)
-    ax.text(*Tq(p.W / 2, -13), "左视图", fontsize=8, ha="center", va="top")
+    ax.text(Tq(p.W / 2, 0)[0], Tq(0, 0)[1] - 2.6, "左视图", fontsize=8, ha="center", va="top")
 
     # ---- 技术要求 ----
     notes = [

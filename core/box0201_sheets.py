@@ -49,6 +49,22 @@ def param_lines_zh(p: Params, info: dict, mat: str = "BC 双瓦楞纸板"):
     ]
 
 
+def _fits(txt, strip_mm, fontsize, min_mm=1.0):
+    """板面文字在图纸上是否放得下（纸面 mm）。"""
+    est = 0.0
+    for ch in str(txt):
+        est += fontsize * 0.3528 * (1.0 if ord(ch) > 0x2E80 else 0.55)
+    return est <= strip_mm - min_mm
+
+
+def _put(ax, x, y, txt, strip_mm, fontsize, color="0.15", min_mm=1.0):
+    """放得下才画：宁可少一个板面字，也不让它压折线。"""
+    if _fits(txt, strip_mm, fontsize, min_mm):
+        ax.text(x, y, txt, fontsize=fontsize, ha="center", va="center", color=color)
+        return True
+    return False
+
+
 def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
     """A3 combined sheet: 1:scale dieline (left) + isometric views (right) + notes.
@@ -110,9 +126,12 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
         (xmid(gd["X3b"], gd["X4a"]), gd["Y0"] - p.fi * 0.5, "内摇盖"),
         (xmid(gd["X4b"], gd["X5"]), gd["Y0"] - p.fo * 0.5, "外摇盖"),
     ]
+    # 板面字：条带在图纸上放不下就不画（窄粘舌/薄端板在 1:15 时只剩 3mm）
+    _areas = {"粘舌": gd["X1"] - gd["X0"], "端板 W": gd["X2"] - gd["X1"],
+              "侧板 L": gd["X3"] - gd["X2"], "内摇盖": p.fi, "外摇盖": p.fo}
     for (lx, ly, s) in labels:
         sx, sy = T(lx, ly)
-        ax.text(sx, sy, s, ha="center", va="center", fontsize=6.2, color="0.15")
+        _put(ax, sx, sy, s, _areas.get(s, 999.0) / scale, 6.2)
 
     # dimension chains
     yb = oy - 8.0
@@ -149,7 +168,7 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     for i, s in enumerate(lines):
         ax.text(38.0, 84.0 - i * 4.0, s, ha="left", va="top", fontsize=6.4, color="0.1")
 
-    ax.text(38.0, 6.5, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
+    ax.text(38.0, 14.0, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
 
     # isometric views (right column)
     from box0210_3d import add_iso_panels, build_items_from

@@ -96,7 +96,8 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
     dim_v(ax, T(-14, d["margin_w"])[1], T(-14, d["margin_w"] + t)[1], xl, f"{t:g}", off=-5.5)
     dim_v(ax, T(-14, d["margin_w"] + t)[1], T(-14, d["margin_w"] + t + d["cell_w"])[1], xl,
           f"{d['cell_w']:g}", off=0.0)
-    ax.text(*T(p.L / 2, -12), f"网格俯视图（{d['n_l']}×{d['n_w']} 格 × {d['layers']} 层）",
+    ax.text(T(p.L / 2, 0)[0], T(0, 0)[1] - 2.6,
+            f"网格俯视图（{d['n_l']}×{d['n_w']} 格 × {d['layers']} 层）",
             fontsize=8, ha="center", va="top")
 
     # ---------------- B 短卡侧视图（右上，旋转 90°：高横向 / 长竖向 / 槽口朝左） ----------------
@@ -115,7 +116,8 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
     ax.plot(*zip(Tb(0, prev), Tb(0, 0)), color="k", lw=0.8)
     dim_h(ax, Tb(0, p.W + 10)[0], Tb(Hc / 2, p.W + 10)[0], Tb(0, p.W + 10)[1], f"{Hc/2:g}", off=1.2)
     dim_h(ax, Tb(0, p.W + 36)[0], Tb(Hc, p.W + 36)[0], Tb(0, p.W + 36)[1], f"{Hc:g}", off=1.5)
-    ax.text(*Tb(Hc / 2, -12), f"短刀卡 ×{d['cards_short']}/层（下开槽 · {d['slots_short']} 槽）",
+    ax.text(Tb(Hc / 2, 0)[0], Tb(0, 0)[1] - 2.6,
+            f"短刀卡 ×{d['cards_short']}/层（下开槽 · {d['slots_short']} 槽）",
             fontsize=8, ha="center", va="top")
 
     # ---------------- C 长卡侧视图（左下，自然向：长横向 / 高竖向 / 槽自顶向下） ----------------
@@ -134,7 +136,8 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
     dim_h(ax, Tc(0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], Tc(0, Hc + 10)[1], f"{p.L:g}")
     dim_v(ax, Tc(0, 0)[1], Tc(0, Hc)[1], Tc(-16, 0)[0], f"{Hc:g}", off=0.0)
     dim_v(ax, Tc(0, Hc)[1], Tc(0, Hc / 2)[1], Tc(d["margin_l"] + d["cell_l"] / 2, 0)[0], f"{Hc/2:g}")
-    ax.text(*Tc(p.L / 2, -12), f"长刀卡 ×{d['cards_long']}/层（上开槽 · {d['slots_long']} 槽）",
+    ax.text(Tc(p.L / 2, 0)[0], Tc(0, 0)[1] - 2.6,
+            f"长刀卡 ×{d['cards_long']}/层（上开槽 · {d['slots_long']} 槽）",
             fontsize=8, ha="center", va="top")
 
     # ---------------- 技术要求（左下，长卡视图之下） ----------------

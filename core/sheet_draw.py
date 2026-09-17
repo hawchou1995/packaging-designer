@@ -74,11 +74,11 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None,
             fontsize=6.5, ha="right", va="center", color="k")
     dim_v(ax, T(0, -gap - p.W)[1], T(0, -gap)[1], T(-9, 0)[0], f"宽 W = {p.W:g}")
 
-    # 视图名
-    for (x, y, t) in ((p.L / 2, -3.2, "主视图"),
-                      (p.L / 2, -gap - p.W - 6.5, "俯视图"),
-                      (p.L + gap + p.W / 2, -3.2, "左视图")):
-        ax.text(*T(x, y), t, fontsize=7.5, ha="center", va="top", color="0.15")
+    # 视图名（y 用**纸面**偏移 2.6mm，不随比例缩小 —— 数据 mm 偏移在 1:15 时会贴到线上）
+    for (x, y, t) in ((p.L / 2, T(0, 0)[1] - 2.6, "主视图"),
+                      (p.L / 2, T(0, -gap - p.W)[1] - 2.6, "俯视图"),
+                      (p.L + gap + p.W / 2, T(0, 0)[1] - 2.6, "左视图")):
+        ax.text(T(x, 0)[0], y, t, fontsize=7.5, ha="center", va="top", color="0.15")
 
     # 标题 / 备注 / 参数块
     ax.text(page[0] / 2, page[1] - 20, f"{p.name} · 三视图 + 等轴测图（第一角）",
@@ -87,6 +87,8 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None,
             f"{p.L:g}×{p.W:g}×{p.H:g} mm · {_scale_tag(d, not manual)} · 单位 mm · "
             f"{datetime.date.today().isoformat()} · 生成：{author}",
             fontsize=8, ha="center", va="center", color="0.15")
+    ax.text(40.0, 14.0, f"大字说明：{p.name}；厚度 {p.H:g}mm 薄板，第一角投影（俯视在下、左视在右）",
+            fontsize=6.4, color="0.30")
 
     # 注释块：优先放进"左视图下方"的空区（收紧版面），摆不下则回退左下角
     nx = ox + (p.L + gap) * s + 8.0
@@ -102,7 +104,7 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None,
         note_lines.append(f"材质：{p.material}")
     for i, line in enumerate(note_lines):
         ax.text(nx, ny - i * 8.0, line, fontsize=6.8, color="0.15")
-    ax.text(40.0, 6.5, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
+    ax.text(40.0, 14.0, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
 
     # 等轴测（右列，与绘图区对齐，放大占位）
     ax2 = fig.add_axes([0.695, 0.42, 0.275, 0.46])

@@ -69,6 +69,22 @@ def param_lines_zh(p: Params, mat_base: str = "BC 双瓦楞纸板", mat_lid: str
     ]
 
 
+def _fits(txt, strip_mm, fontsize, min_mm=1.0):
+    """板面文字在图纸上是否放得下（纸面 mm）。"""
+    est = 0.0
+    for ch in str(txt):
+        est += fontsize * 0.3528 * (1.0 if ord(ch) > 0x2E80 else 0.55)
+    return est <= strip_mm - min_mm
+
+
+def _put(ax, x, y, txt, strip_mm, fontsize, color="0.15", min_mm=1.0):
+    """放得下才画：宁可少一个板面字，也不让它压折线。"""
+    if _fits(txt, strip_mm, fontsize, min_mm):
+        ax.text(x, y, txt, fontsize=fontsize, ha="center", va="center", color=color)
+        return True
+    return False
+
+
 def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
     meta = meta or {}
@@ -115,9 +131,11 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
              (xm(lb["X2"] + lb["s"], lb["X3"] - lb["s"]), lb["Y0"] - p.base_fo * 0.5, "外摇盖"),
              (xm(lb["X3"] + lb["s"], lb["X4"] - lb["s"]), lb["Y0"] - p.base_fi * 0.5, "内摇盖"),
              (xm(lb["X4"] + lb["s"], lb["X5"]), lb["Y0"] - p.base_fo * 0.5, "外摇盖")]
+    _areas_b = {"粘舌": lb["X1"], "端板 W": lb["X2"] - lb["X1"], "侧板 L": lb["X3"] - lb["X2"],
+                "内摇盖": p.base_fi, "外摇盖": p.base_fo}
     for (lx, ly, s) in lab_b:
         sx, sy = T1(lx, ly)
-        ax.text(sx, sy, s, ha="center", va="center", fontsize=5.8, color="0.15")
+        _put(ax, sx, sy, s, _areas_b.get(s, 999.0) / scale, 5.8)
     yb1 = T1(0, lb["Y0"] - p.base_fo)[1] - 7.0
     yb2 = T1(0, lb["Y0"] - p.base_fo)[1] - 15.0
     for i in range(5):
@@ -127,7 +145,8 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     dim_h(ax, T1(lb["X0"], 0)[0], T1(lb["X5"], 0)[0], yb2, "展开长 " + g(lb["X5"] - lb["X0"]))
     dim_v(ax, T1(0, lb["Y0"] - p.base_fo)[1], T1(0, lb["Y0"])[1], ox - 7.0, g(p.base_fo))
     dim_v(ax, T1(0, lb["Y0"])[1], T1(0, lb["Y1"])[1], ox - 7.0, g(lb["Y1"]))
-    ax.text(T1(0, 0)[0] - 14, oy + 20, "底箱（HSC，×1）", fontsize=7.0, ha="left", color="0.1")
+    ax.text(ox - 12.0, oy + bi["blank_h"] / scale + 5, "底箱（HSC，×1）",
+            fontsize=7.0, ha="left", color="0.1")
 
     # ---------------- lid blank (right) ----------------
     ox2 = ox + bi["blank_w"] / scale + 60.0 / scale
@@ -148,7 +167,8 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
              (wb / 2, gl["H1"] - wb / 2, "角片"), (wb / 2, wb / 2, "角片")]
     for (lx, ly, s) in lab_l:
         sx, sy = T2(lx, ly)
-        ax.text(sx, sy, s, ha="center", va="center", fontsize=5.8, color="0.15")
+        _strip = wb if s != "盖顶板" else min(p.lid_Lm, p.lid_Wm)
+        _put(ax, sx, sy, s, _strip / scale, 5.8)
     for (a, b) in ((gl["W0"], gl["cx0"]), (gl["cx0"], gl["cx1"]), (gl["cx1"], gl["W1"])):
         dim_h(ax, T2(a, 0)[0], T2(b, 0)[0], oy2 - 7.0, g(b - a))
     dim_h(ax, T2(gl["W0"], 0)[0], T2(gl["W1"], 0)[0], oy2 - 15.0, "展开长 " + g(gl["W1"] - gl["W0"]))
@@ -173,7 +193,7 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
         p, meta.get("mat_base", "BC 双瓦楞纸板"), meta.get("mat_lid", "BC 双瓦楞纸板"))
     for i, s in enumerate(lines):
         ax.text(38.0, 84.0 - i * 4.0, s, ha="left", va="top", fontsize=6.2, color="0.1")
-    ax.text(38.0, 6.5, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
+    ax.text(38.0, 14.0, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
 
     from box0312_core import panels, lift_items
     from box0210_3d import add_iso_panels, build_items_from

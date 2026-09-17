@@ -17,8 +17,9 @@ from PySide6.QtWidgets import (QFileDialog, QGridLayout, QHBoxLayout, QLabel, QL
 
 import backend
 import price_lib
-from widgets import (BusyBar, Card, FileList, GroupTable, PreviewPane, RowGrid, ScaleField,
-                     check_field, flute_field, num_field, open_path, seg_field, text_field)
+from widgets import (BusyBar, Card, CompareTable, FileList, GroupTable, PreviewPane, RowGrid,
+                     ScaleField, check_field, flute_field, num_field, open_path, seg_field,
+                     text_field)
 
 TMP_ROOT = os.path.join(tempfile.gettempdir(), "PackagingDesigner")
 
@@ -26,12 +27,19 @@ TMP_ROOT = os.path.join(tempfile.gettempdir(), "PackagingDesigner")
 class GenWorker(QThread):
     done = Signal(object)
     fail = Signal(str)
+    progress = Signal(str)
 
     def __init__(self, fn, parent=None):
         super().__init__(parent)
         self.fn = fn
+        self.stage = "正在生成…"
+
+    def say(self, msg):
+        self.stage = msg
+        self.progress.emit(msg)
 
     def run(self):
+        self.progress.emit(self.stage)
         try:
             self.done.emit(self.fn())
         except (Exception, SystemExit) as e:
@@ -89,6 +97,10 @@ class BasePage(QWidget):
         rv.setSpacing(8)
         self.res_card = Card("计算摘要")
         self.table = GroupTable()
+        self.cmp_table = CompareTable(["指标", "V1 长对长", "V2 长对宽"])
+        self.cmp_table.setVisible(False)
+        self.cmp_table.setMaximumHeight(230)
+        self.res_card.add(self.cmp_table)
         self.res_card.add(self.table)
         rv.addWidget(self.res_card, 3)
         self.prev_card = Card("图纸预览")
@@ -128,11 +140,14 @@ class BasePage(QWidget):
         self.btn_exp.setEnabled(False)
         g.addWidget(self.btn_gen, 1, 0)
         g.addWidget(self.btn_exp, 1, 1)
+        self.f_full = seg_field("导出内容", [("full", "全部（含三维）"), ("draw", "只要图纸")],
+                                "full", on_change=self._touched, label_w=64)
+        g.addWidget(self.f_full, 2, 0)
         self.busy = BusyBar()
-        g.addWidget(self.busy, 1, 2, 1, 3)
+        g.addWidget(self.busy, 2, 1, 1, 4)
         self.file_list = FileList()
         self.file_list.setFixedHeight(66)
-        g.addWidget(self.file_list, 2, 0, 1, 4)
+        g.addWidget(self.file_list, 3, 0, 1, 4)
         b1 = QPushButton("打开图纸")
         b1.clicked.connect(self.on_open_main)
         b2 = QPushButton("打开目录")
@@ -141,7 +156,7 @@ class BasePage(QWidget):
         side.setSpacing(4)
         side.addWidget(b1)
         side.addWidget(b2)
-        g.addLayout(side, 2, 4)
+        g.addLayout(side, 3, 4)
         g.setColumnStretch(1, 1)
         g.setColumnStretch(2, 0)
         exp.body().addLayout(g)
@@ -180,8 +195,17 @@ class BasePage(QWidget):
     def sig(self):
         raise NotImplementedError
 
-    def generate(self, outdir, prefix):
+    def generate(self, outdir, prefix, worker=None):
         raise NotImplementedError
+
+    def _pg(self, worker):
+        """把后端阶段回调接到 worker 的 progress 信号。"""
+        if worker is None:
+            return None
+
+        def f(msg):
+            worker.say(msg)
+        return f
 
     # ---------------- 导出流程 ----------------
     def _tmpdir(self):
@@ -222,10 +246,14 @@ class BasePage(QWidget):
         tmp = self._tmpdir()
         sig = self.sig()
         prefix = "gen"
-        self._worker = GenWorker(lambda: self.generate(tmp, prefix), self)
+        self._worker = GenWorker(lambda: self.generate(tmp, prefix, self._worker), self)
         self._worker.done.connect(lambda r, s=sig, p=prefix: self._on_generated(r, s, p))
         self._worker.fail.connect(self.on_fail)
+        self._worker.progress.connect(self._on_progress)
         self._worker.start()
+
+    def _on_progress(self, msg):
+        self.busy.busy(f"{msg}（已 {time.time() - getattr(self, '_t_gen', time.time()):.0f}s）")
 
     def _on_generated(self, result, sig, prefix):
         self.btn_gen.setEnabled(True)
@@ -309,11 +337,19 @@ class BasePage(QWidget):
         self.busy.err(f"生成失败：{msg}")
         traceback.print_exc()
 
+    def full(self):
+        try:
+            return self.f_full.seg.value() == "full"
+        except AttributeError:
+            return True
+
     def frame(self):
         return self.settings.frame()
 
     def _render_rows(self, rows):
         self.table.set_rows(rows)
+        if not isinstance(self, GridPage):
+            self.cmp_table.setVisible(False)
 
 
 # ================================================================ 片材
@@ -367,13 +403,14 @@ class SheetPage(BasePage):
 
     def sig(self):
         p = self._p()
-        return (p.L, p.W, p.H, p.name, p.material, self.f_scale.value())
+        return (p.L, p.W, p.H, p.name, p.material, self.f_scale.value(), self.full())
 
-    def generate(self, outdir, prefix):
+    def generate(self, outdir, prefix, worker=None):
         p = self._p()
         return backend.run_sheet(p.L, p.W, p.H, outdir, prefix=prefix, name=p.name,
                                  material=p.material, frame=self.frame(),
-                                 scale=self.f_scale.value())
+                                 scale=self.f_scale.value(), progress=self._pg(worker),
+                                 full=self.full())
 
 
 # ================================================================ 仿形垫块
@@ -453,14 +490,15 @@ class BlockPage(BasePage):
     def sig(self):
         p = self._p()
         return (p.L, p.W, p.H, p.sl, p.sw, p.sh, p.gap, p.margin_left, p.open_side,
-                p.name, p.material, self.f_scale.value())
+                p.name, p.material, self.f_scale.value(), self.full())
 
-    def generate(self, outdir, prefix):
+    def generate(self, outdir, prefix, worker=None):
         p = self._p()
         return backend.run_block(p.L, p.W, p.H, p.sl, p.sw, p.sh, p.gap, outdir,
                                  prefix=prefix, margin_left=p.margin_left,
                                  open_side=p.open_side, name=p.name, material=p.material,
-                                 frame=self.frame(), scale=self.f_scale.value())
+                                 frame=self.frame(), scale=self.f_scale.value(),
+                                 progress=self._pg(worker), full=self.full())
 
 
 # ================================================================ 网格刀卡
@@ -544,25 +582,30 @@ class GridPage(BasePage):
                 plans[v] = (p, rows, d, None)
             except (Exception, SystemExit) as e:
                 plans[v] = (None, None, None, str(e))
+        # 横向对比表（V1 | V2 两列并排）
+        d1, d2 = plans[1][2], plans[2][2]
+        cmp = [("格数（长×短）",
+                f"{d1['n_l']} × {d1['n_w']}" if d1 else "—",
+                f"{d2['n_l']} × {d2['n_w']}" if d2 else "—"),
+               ("层数", d1["layers"] if d1 else "—", d2["layers"] if d2 else "—"),
+               ("收容数", d1["capacity"] if d1 else "—", d2["capacity"] if d2 else "—"),
+               ("长刀卡（总）", d1["cards_long_total"] if d1 else "—",
+                d2["cards_long_total"] if d2 else "—"),
+               ("短刀卡（总）", d1["cards_short_total"] if d1 else "—",
+                d2["cards_short_total"] if d2 else "—"),
+               ("边距 长/短", f"{d1['margin_l']:g} / {d1['margin_w']:g}" if d1 else "—",
+                f"{d2['margin_l']:g} / {d2['margin_w']:g}" if d2 else "—"),
+               ("堆叠 ≤ 内高", f"{d1['H_stack']:g} ≤ {a['container'][2]:g}" if d1 else "—",
+                f"{d2['H_stack']:g} ≤ {a['container'][2]:g}" if d2 else "—"),
+               ("每套报价", f"¥ {d1['price']['per_set']:.2f}" if (d1 and d1.get("price")) else "—",
+                f"¥ {d2['price']['per_set']:.2f}" if (d2 and d2.get("price")) else "—")]
+        self.cmp_table.set_matrix(cmp)
+        self.cmp_table.setVisible(True)
         groups = []
-        if plans[1][1]:
-            groups.append(("V1 长对长 · 明细", plans[1][1]))
-        cmp_rows = []
-        for v in (1, 2):
-            _p, _rows, d, err = plans[v]
-            tag = "V1 长对长" if v == 1 else "V2 长对宽"
-            if d is None:
-                cmp_rows.append((tag, err))
-                continue
-            cmp_rows += [(f"{tag} · 格数 长×短", f"{d['n_l']} × {d['n_w']}"),
-                         (f"{tag} · 层数 / 收容数", f"{d['layers']} / {d['capacity']}"),
-                         (f"{tag} · 长刀卡/层", f"{d['cards_long']} 张（总 {d['cards_long_total']}）"),
-                         (f"{tag} · 短刀卡/层", f"{d['cards_short']} 张（总 {d['cards_short_total']}）"),
-                         (f"{tag} · 边距 长/短", f"{d['margin_l']:g} / {d['margin_w']:g}"),
-                         (f"{tag} · 堆叠 ≤ 内高", f"{d['H_stack']:g} ≤ {a['container'][2]:g}")]
-            if d.get("price"):
-                cmp_rows.append((f"{tag} · 每套", f"¥ {d['price']['per_set']:.2f}"))
-        groups.append(("方案对比", cmp_rows))
+        main = plans[1][1] or plans[2][1]
+        if main:
+            vtxt = "V1 长对长" if plans[1][1] else "V2 长对宽"
+            groups.append((f"{vtxt} · 明细", main))
         errs = [plans[1][3], plans[2][3]]
         groups.append(("校验", [("开槽宽 ≥ 刀卡厚",
                                  f"{a['slot_w']:g} ≥ {t:g} {'✓' if ok_slot else '✗ 会干涉'}")] +
@@ -575,19 +618,22 @@ class GridPage(BasePage):
     def sig(self):
         a = self._args()
         return (a["container"], a["cell"], a["t"], a["slot_w"], a["sep_t"], a["pads"],
-                self.f_ver.seg.value(), self._price(), self.f_scale.value())
+                self.f_ver.seg.value(), self._price(), self.f_scale.value(), self.full())
 
-    def generate(self, outdir, prefix):
+    def generate(self, outdir, prefix, worker=None):
         a = self._args()
         ver = self.f_ver.seg.value()
         vers = [1, 2] if ver == "12" else [int(ver)]
         files, rows = [], []
-        for v in vers:
+        for k, v in enumerate(vers):
             pre = f"{prefix}-V{v}" if len(vers) > 1 else prefix
+            _tag = f"方案 {k + 1}/{len(vers)} · " if len(vers) > 1 else ""
             r = backend.run_grid(a["container"], a["cell"], a["t"], outdir, prefix=pre,
                                  slot_w=a["slot_w"], sep_t=a["sep_t"], pads=a["pads"],
                                  version=v, frame=self.frame(), scale=self.f_scale.value(),
-                                 price=self._price())
+                                 price=self._price(),
+                                 progress=(lambda m, t=_tag: worker.say(t + m)) if worker else None,
+                                 full=self.full())
             files += r.files
             rows = r.rows
         if not files:
@@ -797,9 +843,10 @@ class BoxPage(BasePage):
         return (self._box(),
                 (self.f_L.widget.value(), self.f_W.widget.value(), self.f_H.widget.value()),
                 self.f_mode.seg.value(), self._flutes(), self._params(), self._price(),
-                self.f_scale.value())
+                self.f_scale.value(), self.full())
 
-    def generate(self, outdir, prefix):
+    def generate(self, outdir, prefix, worker=None):
         plan = self._plan()
         return backend.box_export(self._box(), plan, outdir, prefix=prefix,
-                                  frame=self.frame(), scale=self.f_scale.value())
+                                  frame=self.frame(), scale=self.f_scale.value(),
+                                  progress=self._pg(worker), full=self.full())
