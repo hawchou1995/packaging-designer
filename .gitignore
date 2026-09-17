@@ -11,6 +11,7 @@ installer/*.exe
 
 # 运行/自检产物（自检输出目录统一以 _ 开头）
 _*/
+_settings.ini
 guiprobe_out/
 _dgsread/
 _realdir/
