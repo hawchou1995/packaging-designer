@@ -37,10 +37,13 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
     fam, fpath = _font_family()
     fig = plt.figure(figsize=(page[0] / 25.4, page[1] / 25.4))
     vtxt = "V1 长对长" if d["version"] == 1 else "V2 长对宽"
-    draw_frame(fig, page=page, name=f"瓦楞刀卡网格 {p.L:g}×{p.W:g}×{p.H:g} · {vtxt}",
-               material=(f"刀卡 t={d['t']:g}" if abs(d.get('st', d['t']) - d['t']) < 1e-9
-                         else f"刀卡 t={d['t']:g} / 隔板 t={d.get('st', d['t']):g}") + "（可折叠）",
-               dwgno=f"GRID-{p.L:g}x{p.W:g}x{p.H:g}-V{d['version']}",
+    draw_frame(fig, page=page,
+               name=meta.get("dwg_name") or f"瓦楞刀卡网格 {p.L:g}×{p.W:g}×{p.H:g} · {vtxt}",
+               material=meta.get("dwg_material") or
+               ((f"刀卡 t={d['t']:g}" if abs(d.get('st', d['t']) - d['t']) < 1e-9
+                 else f"刀卡 t={d['t']:g} / 隔板 t={d.get('st', d['t']):g}") + "（可折叠）"),
+               dwgno=meta.get("dwg_no") or f"GRID-{p.L:g}x{p.W:g}x{p.H:g}-V{d['version']}",
+               version=meta.get("dwg_version") or "A",
                scale_str=_ss(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),

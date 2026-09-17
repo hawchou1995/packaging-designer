@@ -14,7 +14,7 @@ import theme
 GITHUB_URL = "https://github.com/hawchou1995/packaging-designer"
 AUTHOR = "周豪 · 供应链管理部"
 APP_NAME = "包装设计器 Packaging Designer"
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 DESC = ("面向瓦楞纸包装的参数量出图工具：片材、仿形垫块、网格刀卡、FEFCO 0201 / 0310 / 0312 纸箱。\n"
         "一次输入即产出 A3 图纸（展开图 + 轴测图 + GB 图框）、1:1 DXF、STEP/STL 数模与参数表。")
 
@@ -75,6 +75,15 @@ class SettingsDialog(QDialog):
         self.e_author = QLineEdit(self.settings.author)
         self.e_author.setPlaceholderText("出现在图纸副标题「生成：…」与参数表里")
         f.addRow("图纸 · 生成人", self.e_author)
+        f.addRow("", self._sec("图样栏（留空 = 程序自动生成，可覆盖）"))
+        for key, lab, ph in (("dwg_name", "图样名称", "如：片材 400×300×15"),
+                             ("dwg_no", "图样代号", "如：SHEET-400x300x15"),
+                             ("dwg_version", "版本", "留空 = A"),
+                             ("dwg_material", "材料", "如：BC 双瓦楞 t=7（可折叠）")):
+            w = QLineEdit(getattr(self.settings, key))
+            w.setPlaceholderText(ph)
+            setattr(self, "e_" + key, w)
+            f.addRow(f"图框 · {lab}", w)
         f.addRow("", self._sec("图框签署栏（与图纸右下角栏位一一对应）"))
         for key, lab in (("designed", "设计"), ("drawn", "制图"), ("proofed", "校对"),
                          ("checked", "审核"), ("process", "工艺"), ("standard", "标准化"),
@@ -161,7 +170,8 @@ class SettingsDialog(QDialog):
         s.company = self.e_company.text().strip() or s.company
         s.author = self.e_author.text().strip() or s.author
         for key in ("designed", "drawn", "proofed", "checked", "process", "standard",
-                    "approved", "date"):
+                    "approved", "date", "dwg_name", "dwg_no", "dwg_version",
+                    "dwg_material"):
             setattr(s, key, getattr(self, "e_" + key).text().strip())
         s.open_after = self.c_open.isChecked()
         s.save()
@@ -172,9 +182,18 @@ class FrameDialog(QDialog):
     """只维护图框字段的轻量对话框——在图框里看到空格子时直接开这个填。"""
 
     FIELDS = (("company", "单位名称"), ("author", "生成人（副标题）"),
+              ("dwg_name", "图样名称"), ("dwg_no", "图样代号"), ("dwg_version", "版本"),
+              ("dwg_material", "材料"),
               ("designed", "设计"), ("drawn", "制图"), ("proofed", "校对"),
               ("checked", "审核"), ("process", "工艺"), ("standard", "标准化"),
               ("approved", "批准"), ("date", "日期（留空 = 当天）"))
+
+    # 留空 = 用程序自动值（占位提示告诉用户自动值长什么样）
+    PLACEHOLDER = {"dwg_name": "留空 = 自动，如：片材 片材 400×300×15",
+                   "dwg_no": "留空 = 自动，如：SHEET-400x300x15",
+                   "dwg_version": "留空 = A",
+                   "dwg_material": "留空 = 自动，如：BC 双瓦楞 t=7（可折叠）",
+                   "date": "留空 = 生成当天日期"}
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -191,12 +210,15 @@ class FrameDialog(QDialog):
         self.edits = {}
         for key, lab in self.FIELDS:
             w = QLineEdit(str(getattr(settings, key, "") or ""))
-            if key == "date":
-                w.setPlaceholderText("留空 = 生成当天日期")
+            ph = self.PLACEHOLDER.get(key)
+            if ph:
+                w.setPlaceholderText(ph)
             self.edits[key] = w
             f.addRow(lab, w)
         v.addLayout(f)
-        hint = QLabel("这些值直接写进图纸右下角图框（GB/T 10609.1 签署栏）；保存后重新「生成」生效。")
+        hint = QLabel("这些值直接写进图纸右下角图框（GB/T 10609.1）；"
+                      "图样名称/代号/版本/材料留空时用程序自动值，填了就按你填的写。"
+                      "保存后重新「生成」生效。")
         hint.setObjectName("FieldHint")
         hint.setWordWrap(True)
         v.addWidget(hint)

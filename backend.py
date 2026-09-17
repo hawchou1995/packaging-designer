@@ -100,7 +100,9 @@ def frame_meta(frame=None):
                 designed=f.get("designed", ""), drawn=f.get("drawn", ""),
                 proofed=f.get("proofed", ""), checked=f.get("checked", ""),
                 process=f.get("process", ""), standard=f.get("standard", ""),
-                approved=f.get("approved", ""), date=f.get("date", ""))
+                approved=f.get("approved", ""), date=f.get("date", ""),
+                dwg_name=f.get("dwg_name", ""), dwg_no=f.get("dwg_no", ""),
+                dwg_version=f.get("dwg_version", ""), dwg_material=f.get("dwg_material", ""))
 
 
 def _fmt3(v):

@@ -14,6 +14,7 @@ DEFAULTS = dict(
     author="包装周哥",
     designed="", drawn="", proofed="", checked="", process="", standard="",
     approved="", date="",
+    dwg_name="", dwg_no="", dwg_version="", dwg_material="",
     open_after=True,
 )
 
@@ -33,6 +34,10 @@ class Settings:
         self.standard = str(self.q.value("standard", DEFAULTS["standard"]))
         self.approved = str(self.q.value("approved", DEFAULTS["approved"]))
         self.date = str(self.q.value("date", DEFAULTS["date"]))
+        self.dwg_name = str(self.q.value("dwg_name", DEFAULTS["dwg_name"]))
+        self.dwg_no = str(self.q.value("dwg_no", DEFAULTS["dwg_no"]))
+        self.dwg_version = str(self.q.value("dwg_version", DEFAULTS["dwg_version"]))
+        self.dwg_material = str(self.q.value("dwg_material", DEFAULTS["dwg_material"]))
         self.open_after = str(self.q.value("open_after", DEFAULTS["open_after"])).lower() in ("true", "1")
 
     def save(self):
@@ -48,6 +53,10 @@ class Settings:
         self.q.setValue("standard", self.standard)
         self.q.setValue("approved", self.approved)
         self.q.setValue("date", self.date)
+        self.q.setValue("dwg_name", self.dwg_name)
+        self.q.setValue("dwg_no", self.dwg_no)
+        self.q.setValue("dwg_version", self.dwg_version)
+        self.q.setValue("dwg_material", self.dwg_material)
         self.q.setValue("open_after", self.open_after)
         self.q.sync()
 
@@ -56,4 +65,6 @@ class Settings:
         return dict(company=self.company, author=self.author, designed=self.designed,
                     drawn=self.drawn, proofed=self.proofed, checked=self.checked,
                     process=self.process, standard=self.standard,
-                    approved=self.approved, date=self.date)
+                    approved=self.approved, date=self.date,
+                    dwg_name=self.dwg_name, dwg_no=self.dwg_no,
+                    dwg_version=self.dwg_version, dwg_material=self.dwg_material)

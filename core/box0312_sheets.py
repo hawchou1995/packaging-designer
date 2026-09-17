@@ -202,9 +202,10 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     add_iso_panels(fig, ic, io, cap1="组装状态（等轴测）", cap2="开盖状态（天盖提起）")
     from dwgframe import draw_frame
     draw_frame(fig, page=page,
-               name=meta.get("name", f"FEFCO 0312 有底无盖+平顶罩盖 {p.L:g}×{p.W:g}×{p.H:g}"),
-               material=meta.get("material", f"BC 双瓦楞 t={p.tl:g}（可折叠）"),
-               dwgno=meta.get("dwgno", "0312-BC-400x300x200"),
+               name=meta.get("dwg_name") or meta.get("name") or f"FEFCO 0312 有底无盖+平顶罩盖 {p.L:g}×{p.W:g}×{p.H:g}",
+               material=meta.get("dwg_material") or meta.get("material") or f"BC 双瓦楞 t={p.tl:g}（可折叠）",
+               dwgno=meta.get("dwg_no") or meta.get("dwgno") or "0312-BC-400x300x200",
+               version=meta.get("dwg_version") or "A",
                scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),

@@ -111,8 +111,11 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None,
     draw_scene(ax2, items(p))
     ax2.set_title("轴测图（等轴测）", fontsize=9)
     from dwgframe import draw_frame
-    draw_frame(fig, page=page, name=f"{p.name} 片材 {p.L:g}×{p.W:g}×{p.H:g}",
-               material=(p.material or "—"), dwgno=f"SHEET-{p.L:g}x{p.W:g}x{p.H:g}",
+    draw_frame(fig, page=page,
+               name=meta.get("dwg_name") or f"{p.name} 片材 {p.L:g}×{p.W:g}×{p.H:g}",
+               material=meta.get("dwg_material") or (p.material or "—"),
+               dwgno=meta.get("dwg_no") or f"SHEET-{p.L:g}x{p.W:g}x{p.H:g}",
+               version=meta.get("dwg_version") or "A",
                scale_str=_scale_str(d), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),

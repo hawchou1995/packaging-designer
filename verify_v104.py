@@ -142,7 +142,10 @@ def main():
     import dialogs as dl
     fd = dl.FrameDialog(win.settings)
     keys = [k for k, _ in dl.FrameDialog.FIELDS]
-    check("图框对话框字段数 = 10（含工艺/标准化/日期）", len(keys) == 10, str(keys))
+    need = ("company", "author", "designed", "drawn", "proofed", "checked",
+            "process", "standard", "approved", "date",
+            "dwg_name", "dwg_no", "dwg_version", "dwg_material")
+    check("图框对话框字段齐（14 项）", all(k in keys for k in need) and len(keys) == 14, str(keys))
     fd.edits["proofed"].setText("校对人")
     fd.edits["process"].setText("工艺人")
     fd.edits["standard"].setText("标准化人")

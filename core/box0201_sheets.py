@@ -183,9 +183,10 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                    cap1="闭合状态（等轴测）", cap2="开盖状态（内短摇盖已合、平齐箱口）\n外长摇盖开启——合盖顺序：先内短、后外长）")
     from dwgframe import draw_frame
     draw_frame(fig, page=page,
-               name=meta.get("name", f"FEFCO 0201 开槽箱（RSC）{p.L:g}×{p.W:g}×{p.H:g}"),
-               material=meta.get("material", f"BC 双瓦楞 t={p.t:g}（可折叠）"),
-               dwgno=meta.get("dwgno", "0201-BC-400x300x200"),
+               name=meta.get("dwg_name") or meta.get("name") or f"FEFCO 0201 开槽箱（RSC）{p.L:g}×{p.W:g}×{p.H:g}",
+               material=meta.get("dwg_material") or meta.get("material") or f"BC 双瓦楞 t={p.t:g}（可折叠）",
+               dwgno=meta.get("dwg_no") or meta.get("dwgno") or "0201-BC-400x300x200",
+               version=meta.get("dwg_version") or "A",
                scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),

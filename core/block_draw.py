@@ -40,8 +40,11 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
         #   下界：俯视图宽 W ≤ 86mm（保证注释块落在 y≥20）
         sc = max(_pick(p.L + 16 + p.W, 244.0), _pick(p.H, 48.0), _pick(p.W, 86.0))
     fig._scale_used, fig._scale_auto = sc, not manual
-    draw_frame(fig, page=page, name=f"{p.name} {p.L:g}×{p.W:g}×{p.H:g}",
-               material=(p.material or "—"), dwgno=f"BLK-{p.L:g}x{p.W:g}x{p.H:g}",
+    draw_frame(fig, page=page,
+               name=meta.get("dwg_name") or f"{p.name} {p.L:g}×{p.W:g}×{p.H:g}",
+               material=meta.get("dwg_material") or (p.material or "—"),
+               dwgno=meta.get("dwg_no") or f"BLK-{p.L:g}x{p.W:g}x{p.H:g}",
+               version=meta.get("dwg_version") or "A",
                scale_str=_scale_str(sc), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),

@@ -266,8 +266,9 @@ class BasePage(QWidget):
 
     def on_frame_fields(self):
         from dialogs import FrameDialog
+        from PySide6.QtWidgets import QDialog
         d = FrameDialog(self.settings, self)
-        if d.exec() == d.Accepted:
+        if d.exec() == QDialog.DialogCode.Accepted:
             self._touched()                 # 图框字段变了 → 导出按钮按签名规则失效
             self.busy.ok("图框字段已保存：重新「① 生成」后写进图纸")
 
