@@ -1,0 +1,133 @@
+{
+  "flutes": {
+    "B": {
+      "code": "B",
+      "name": "A版 单瓦（B 楞）",
+      "t": 3.0,
+      "edge": null,
+      "burst": null,
+      "note": "飞书表厚度列缺失→按 GB/T 6544 B 楞典型值补",
+      "source": "feishu+GB/T6544"
+    },
+    "BC": {
+      "code": "BC",
+      "name": "A版 双瓦（BC 楞）",
+      "t": 7.0,
+      "edge": 5550,
+      "burst": 961,
+      "note": "",
+      "source": "feishu"
+    },
+    "BC-HS": {
+      "code": "BC-HS",
+      "name": "超密封 K 双瓦（高强 BC）",
+      "t": 7.0,
+      "edge": 10000,
+      "burst": 2400,
+      "note": "",
+      "source": "feishu"
+    },
+    "C": {
+      "code": "C",
+      "name": "超密封 K 单瓦（C 楞）",
+      "t": 4.0,
+      "edge": null,
+      "burst": null,
+      "note": "飞书表数值列缺失→按 GB/T 6544 C 楞典型值补",
+      "source": "feishu+GB/T6544"
+    },
+    "ABC": {
+      "code": "ABC",
+      "name": "ABC 三层（超密封）",
+      "t": 12.0,
+      "edge": 18500,
+      "burst": 2295,
+      "note": "",
+      "source": "feishu"
+    },
+    "AAA": {
+      "code": "AAA",
+      "name": "AAA 三层（超密封）",
+      "t": 15.0,
+      "edge": 21000,
+      "burst": 3100,
+      "note": "",
+      "source": "feishu"
+    }
+  },
+  "ranges": {
+    "single": {
+      "glue_w": [
+        35.0,
+        40.0
+      ],
+      "flap_gain": [
+        1.0,
+        3.0
+      ],
+      "flap_reduce": [
+        1.0,
+        3.0
+      ],
+      "slot_w": [
+        6.0,
+        10.0
+      ],
+      "src": "GB/T 6543-2025 通例 + 行业实践"
+    },
+    "double": {
+      "glue_w": [
+        45.0,
+        50.0
+      ],
+      "flap_gain": [
+        3.0,
+        4.5
+      ],
+      "flap_reduce": [
+        3.0,
+        4.5
+      ],
+      "slot_w": [
+        8.0,
+        12.0
+      ],
+      "src": "包材需求表（BC 8/5/3.5-4.5）+ GB/T 6543"
+    },
+    "triple": {
+      "glue_w": [
+        50.0,
+        55.0
+      ],
+      "flap_gain": [
+        4.0,
+        6.0
+      ],
+      "flap_reduce": [
+        4.0,
+        6.0
+      ],
+      "slot_w": [
+        10.0,
+        14.0
+      ],
+      "src": "GB/T 6543 通例（三层加放）"
+    }
+  },
+  "box": {
+    "0310": {
+      "gap": [
+        1.0,
+        3.0
+      ],
+      "src": "盖内与围框外单边间隙（FEFCO 0310 实践）"
+    },
+    "0312": {
+      "box_gap": [
+        1.0,
+        3.0
+      ],
+      "src": "天盖与底箱单边间隙（FEFCO 0312 实践）"
+    }
+  }
+}

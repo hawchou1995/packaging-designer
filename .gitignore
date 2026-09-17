@@ -1,0 +1,26 @@
+# 构建产物
+dist/
+build_tmp/
+build/
+*.spec.bak
+installer/*.exe
+
+# 运行/自检产物
+_smoke/
+_guitest/
+_frozen_test/
+_installed_test/
+_shots/
+_scratch/
+_*.py
+_*.log
+_*.png
+*.pyc
+__pycache__/
+*.pyo
+.pytest_cache/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
