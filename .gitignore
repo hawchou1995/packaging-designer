@@ -1,15 +1,16 @@
 # 构建产物
 dist/
+dist101/
 build_tmp/
+build101/
 build/
 *.spec.bak
 installer/*.exe
 
-# 运行/自检产物
+# 运行/自检产物（自检输出目录统一以 _ 开头）
+_*/
 _smoke/
 _guitest/
-_frozen_test/
-_installed_test/
 _shots/
 _scratch/
 _*.py

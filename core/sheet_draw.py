@@ -16,19 +16,21 @@ from box0210_2d import _font_family, dim_h, dim_v
 from box0210_3d import draw_scene
 from sheet_core import Params, items
 
-SCALES = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 10.0, 20.0)   # GB 常用系列 + 必要时允许档
+from drawutil import SCALES          # GB 常用系列 + 放大档（0.2/0.5 → 5:1/2:1）
+
+
+from drawutil import pick_scale as _pick_scale_u, scale_str as _scale_str, scale_tag as _scale_tag
 
 
 def _pick_scale(block_w, block_h, avail_w, avail_h):
-    for d in SCALES:
-        s = 1.0 / d
-        if block_w * s <= avail_w and block_h * s <= avail_h:
-            return d
-    return SCALES[-1]
+    return _pick_scale_u(block_w, block_h, avail_w, avail_h, SCALES)
 
 
-def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None):
+def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None,
+                scale: float = None):
     meta = meta or {}
+    author = meta.get("author", "包装周哥")
+    manual = scale is not None and float(scale) > 0
     fam, fpath = _font_family()
     fig = plt.figure(figsize=(page[0] / 25.4, page[1] / 25.4))
     ax = fig.add_axes([0, 0, 1, 1])
@@ -40,9 +42,10 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None)
     block_w = p.L + gap + p.W
     block_h = p.H + gap + p.W
     # 版面分区：注释带（底部 y 8..60）· 绘图区（y 66..262）· 轴测列（右侧）
-    avail_w, avail_h = 260.0, 196.0
-    d = float(d_force) if d_force else _pick_scale(block_w, block_h, avail_w, avail_h)
+    avail_w, avail_h = 244.0, 196.0
+    d = float(scale) if (manual or d_force) else _pick_scale(block_w, block_h, avail_w, avail_h)
     s = 1.0 / d
+    fig._scale_used, fig._scale_auto = d, not manual
     if block_w * s > avail_w + 0.1 or block_h * s > avail_h + 0.1:
         print(f"提示：比例 1:{d:g} 超出绘图区（{block_w*s:.0f}×{block_h*s:.0f} > "
               f"{avail_w:.0f}×{avail_h:.0f}），可能与轴测列/边距相碰")
@@ -78,10 +81,12 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None)
         ax.text(*T(x, y), t, fontsize=7.5, ha="center", va="top", color="0.15")
 
     # 标题 / 备注 / 参数块
-    ax.text(40.0, page[1] - 15, f"{p.name} · 三视图 + 等轴测图（第一角）· "
-            f"{p.L:g}×{p.W:g}×{p.H:g} mm · 比例 1:{d:g}", fontsize=11, color="0.05")
-    ax.text(page[0] - 20.0, page[1] - 15, f"{datetime.date.today().isoformat()} · 生成：ZCode",
-            fontsize=6.5, ha="right", color="0.3")
+    ax.text(page[0] / 2, page[1] - 20, f"{p.name} · 三视图 + 等轴测图（第一角）",
+            fontsize=13, fontweight="bold", ha="center", va="center", color="0.05")
+    ax.text(page[0] / 2, page[1] - 27,
+            f"{p.L:g}×{p.W:g}×{p.H:g} mm · {_scale_tag(d, not manual)} · 单位 mm · "
+            f"{datetime.date.today().isoformat()} · 生成：{author}",
+            fontsize=8, ha="center", va="center", color="0.15")
 
     # 注释块：优先放进"左视图下方"的空区（收紧版面），摆不下则回退左下角
     nx = ox + (p.L + gap) * s + 8.0
@@ -106,7 +111,7 @@ def build_sheet(p: Params, page=(420.0, 297.0), d_force=None, meta: dict = None)
     from dwgframe import draw_frame
     draw_frame(fig, page=page, name=f"{p.name} 片材 {p.L:g}×{p.W:g}×{p.H:g}",
                material=(p.material or "—"), dwgno=f"SHEET-{p.L:g}x{p.W:g}x{p.H:g}",
-               scale_str=f"1:{d:g}", sheet="A3",
+               scale_str=_scale_str(d), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
                checked=meta.get("checked", ""), approved=meta.get("approved", ""))

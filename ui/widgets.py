@@ -8,10 +8,10 @@ import subprocess
 import sys
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QPixmap
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QFont, QPixmap
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QGridLayout,
-                               QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QProgressBar,
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QGridLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QProgressBar,
                                QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
 
@@ -77,7 +77,7 @@ class FieldRow(QWidget):
 
 
 def num_field(label, value, lo=0.0, hi=1e6, step=1.0, decimals=1, hint=None,
-              suffix="mm", width=None, on_change=None):
+              suffix="", width=None, on_change=None):
     sp = QDoubleSpinBox()
     sp.setRange(lo, hi)
     sp.setDecimals(decimals)
@@ -85,6 +85,8 @@ def num_field(label, value, lo=0.0, hi=1e6, step=1.0, decimals=1, hint=None,
     sp.setValue(value)
     sp.setSuffix(" " + suffix if suffix else "")
     mono(sp)
+    sp.setMinimumWidth(96)
+    sp.setButtonSymbols(QDoubleSpinBox.UpDownArrows)
     if width:
         sp.setFixedWidth(width)
     if on_change:
@@ -320,3 +322,227 @@ def open_path(path):
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
         return True
     return False
+
+
+# ================================================================ 表格化表单（v1.0.1）
+class Row(QWidget):
+    """标签在左、控件在右的一行（紧凑表格化）。"""
+
+    def __init__(self, label, widget, label_w=84, hint=None, parent=None):
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        h = QHBoxLayout()
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        lab = QLabel(label)
+        lab.setObjectName("FieldLabel")
+        lab.setFixedWidth(label_w)
+        lab.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        h.addWidget(lab)
+        h.addWidget(widget, 1)
+        v.addLayout(h)
+        self.hint = None
+        if hint:
+            self.hint = QLabel(hint)
+            self.hint.setObjectName("FieldHint")
+            self.hint.setWordWrap(True)
+            self.hint.setContentsMargins(label_w + 8, 0, 0, 0)
+            v.addWidget(self.hint)
+        self.widget = widget
+
+
+class RowGrid(QWidget):
+    """每行 2 个 Row 的紧凑网格（避免纵向长条滚动）。"""
+
+    def __init__(self, cols=2, parent=None):
+        super().__init__(parent)
+        self._g = QGridLayout(self)
+        self._g.setContentsMargins(0, 0, 0, 0)
+        self._g.setHorizontalSpacing(14)
+        self._g.setVerticalSpacing(7)
+        self._cols = cols
+        self._n = 0
+        for c in range(cols):
+            self._g.setColumnStretch(c, 1)
+
+    def add(self, row, span=False):
+        if span:
+            if self._n % self._cols:
+                self._n += self._cols - (self._n % self._cols)
+            self._g.addWidget(row, self._n // self._cols, 0, 1, self._cols)
+            self._n += self._cols
+        else:
+            self._g.addWidget(row, self._n // self._cols, self._n % self._cols)
+            self._n += 1
+        return row
+
+    def add_wide(self, w):
+        if self._n % self._cols:
+            self._n += self._cols - (self._n % self._cols)
+        self._g.addWidget(w, self._n // self._cols, 0, 1, self._cols)
+        self._n += self._cols
+        return w
+
+    def next_row(self):
+        if self._n % self._cols:
+            self._n += self._cols - (self._n % self._cols)
+
+
+def seg_field(label, options, value=None, on_change=None, label_w=84, compact=False):
+    """分段单选（替代下拉）：options = [(value, text)]。"""
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(4)
+    grp = QButtonGroup(w)
+    grp.setExclusive(True)
+    btns = {}
+    for i, (val, txt) in enumerate(options):
+        b = QPushButton(txt)
+        b.setCheckable(True)
+        b.setObjectName("Seg")
+        b.setCursor(Qt.PointingHandCursor)
+        if compact:
+            b.setMinimumWidth(0)
+        grp.addButton(b, i)
+        h.addWidget(b)
+        btns[val] = b
+        if (value is None and i == 0) or (value is not None and val == value):
+            b.setChecked(True)
+    h.addStretch(1)
+    w.value = lambda: grp.checkedButton().property("segval") if grp.checkedButton() else None
+    for val, b in btns.items():
+        b.setProperty("segval", val)
+    if on_change:
+        grp.idClicked.connect(lambda *_: on_change())
+    w._grp, w._btns = grp, btns
+    w.set_value = lambda v: btns[v].setChecked(True) if v in btns else None
+    row = Row(label, w, label_w=label_w)
+    row.seg = w
+    return row
+
+
+def flute_field(label, materials, value=None, on_change=None, label_w=84, per_row=5):
+    """楞型紧凑按钮组：每个按钮显示「代号 t=厚度」，按 per_row 换行（避免超宽裁切）。"""
+    w = QWidget()
+    h = QGridLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setHorizontalSpacing(3)
+    h.setVerticalSpacing(3)
+    grp = QButtonGroup(w)
+    grp.setExclusive(True)
+    btns = {}
+    for i, (code, t) in enumerate(materials):
+        b = QPushButton(f"{code} t={t:g}")
+        b.setCheckable(True)
+        b.setObjectName("FluteBtn")
+        b.setCursor(Qt.PointingHandCursor)
+        b.setProperty("fcode", code)
+        grp.addButton(b, i)
+        h.addWidget(b, i // per_row, i % per_row)
+        btns[code] = b
+        if (value is None and i == 0) or (value == code):
+            b.setChecked(True)
+    h.setColumnStretch(per_row, 1)
+    for code, b in btns.items():
+        b.setProperty("segval", code)
+    w.value = lambda: grp.checkedButton().property("segval") if grp.checkedButton() else None
+    w.set_value = lambda v: btns[v].setChecked(True) if v in btns else None
+    if on_change:
+        grp.idClicked.connect(lambda *_: on_change())
+    w._grp, w._btns = grp, btns
+    row = Row(label, w, label_w=label_w)
+    row.flute = w
+    return row
+
+
+class ScaleField(QWidget):
+    """比例：自动（默认）/ 手动 1:x。"""
+
+    def __init__(self, on_change=None, parent=None):
+        super().__init__(parent)
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        self.chk_auto = QCheckBox("自动")
+        self.chk_auto.setChecked(True)
+        self.sp = QDoubleSpinBox()
+        self.sp.setRange(0.2, 100.0)
+        self.sp.setDecimals(1)
+        self.sp.setSingleStep(0.5)
+        self.sp.setValue(6.0)
+        self.sp.setPrefix("1:")
+        self.sp.setEnabled(False)
+        mono(self.sp)
+        self.lab = QLabel("（按图幅自动选档）")
+        self.lab.setObjectName("FieldHint")
+        h.addWidget(self.chk_auto)
+        h.addWidget(self.sp)
+        h.addWidget(self.lab)
+        h.addStretch(1)
+        self.chk_auto.toggled.connect(self._sync)
+        if on_change:
+            self.chk_auto.toggled.connect(lambda *_: on_change())
+            self.sp.valueChanged.connect(lambda *_: on_change())
+
+    def _sync(self):
+        auto = self.chk_auto.isChecked()
+        self.sp.setEnabled(not auto)
+        self.lab.setText("（按图幅自动选档）" if auto else "（手动：画不下时仅提示，不阻断）")
+
+    def value(self):
+        return None if self.chk_auto.isChecked() else float(self.sp.value())
+
+    def reset(self):
+        self.chk_auto.setChecked(True)
+
+
+class GroupTable(QTableWidget):
+    """分组结果表：标题行（加粗、浅底）+ 键值行。"""
+
+    def __init__(self, parent=None):
+        super().__init__(0, 2, parent)
+        self.horizontalHeader().setVisible(False)
+        self.verticalHeader().setVisible(False)
+        self.setShowGrid(False)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.setSelectionMode(QTableWidget.ContiguousSelection)
+        self.setFocusPolicy(Qt.ClickFocus)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.setColumnWidth(0, 196)
+        self.setWordWrap(True)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+
+    def set_groups(self, groups):
+        n = sum(len(rows) for _, rows in groups)
+        self.setRowCount(n)
+        i = 0
+        for title, rows in groups:
+            if title:
+                a = QTableWidgetItem(title)
+                a.setForeground(QBrush(QColor(theme.ACCENT)))
+                f = a.font()
+                f.setBold(True)
+                a.setFont(f)
+                self.setItem(i, 0, a)
+                self.setItem(i, 1, QTableWidgetItem(""))
+                i += 1
+            for k, v in rows:
+                a = QTableWidgetItem(str(k))
+                b = QTableWidgetItem(str(v))
+                if k.startswith("—"):
+                    f = a.font()
+                    f.setBold(True)
+                    a.setFont(f)
+                mono(b, 10)
+                b.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.setItem(i, 0, a)
+                self.setItem(i, 1, b)
+                i += 1
+        self.resizeRowsToContents()
+
+    # 兼容旧调用
+    def set_rows(self, rows):
+        self.set_groups([(None, rows)])

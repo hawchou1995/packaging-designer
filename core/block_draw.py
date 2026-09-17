@@ -9,11 +9,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from dwgframe import draw_frame
-from box0210_2d import dim_h, dim_v, _font_family, save_sheet_png_svg
+from box0210_2d import dim_h, dim_v, _font_family, save_sheet_png_svg, _today
 from box0210_3d import draw_scene
 from block_model import items as model_items, draw_axo_clean
+from drawutil import scale_str as _scale_str, scale_tag as _scale_tag, SCALES as _SCALES_ALL
 
-SCALES = (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 10.0, 20.0)
+SCALES = _SCALES_ALL          # 含放大档（0.2/0.5 → 5:1/2:1）
 
 
 def _pick(L, avail):
@@ -23,14 +24,21 @@ def _pick(L, avail):
     return SCALES[-1]
 
 
-def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None):
+def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = None):
     meta = meta or {}
+    author = meta.get("author", "包装周哥")
+    manual = scale is not None and float(scale) > 0
     fam, fpath = _font_family()
     fig = plt.figure(figsize=(page[0] / 25.4, page[1] / 25.4))
-    sc = _pick(p.L, 208.0)
+    # 版面约束：横向 L*s+16+W*s ≤ 244（避开轴测列 292）；纵向 H*s ≤ 56、W*s ≤ 86（避开注释块）
+    if manual:
+        sc = float(scale)
+    else:
+        sc = min(_pick(p.L + 16 + p.W, 244.0), _pick(p.H, 56.0), _pick(p.W, 86.0))
+    fig._scale_used, fig._scale_auto = sc, not manual
     draw_frame(fig, page=page, name=f"{p.name} {p.L:g}×{p.W:g}×{p.H:g}",
                material=(p.material or "—"), dwgno=f"BLK-{p.L:g}x{p.W:g}x{p.H:g}",
-               scale_str=f"1:{sc:g}", sheet="A3",
+               scale_str=_scale_str(sc), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
                checked=meta.get("checked", ""), approved=meta.get("approved", ""))
@@ -40,7 +48,8 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None):
 
     s = 1.0 / sc
     Lv, Wv, Hv = p.L * s, p.W * s, p.H * s
-    FX, FY = 42.0, 212.0                      # 主视图原点（左下）
+    FX = 42.0 + max(0.0, (244.0 - (p.L + 16 + p.W) / sc) / 2.0)   # 主视图原点（左下），横向居中
+    FY = 212.0
     TY = FY - 14.0 - Wv                       # 俯视图原点（长对正）
 
     def Tf(x, y): return (FX + x * s, FY + y * s)
@@ -120,6 +129,12 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None):
     ]
     if p.material:
         notes.append(f"6. 材质：{p.material}。")
+    ax.text(page[0] / 2, page[1] - 20, f"{p.name} · 三视图 + 轴测图（第一角）",
+            fontsize=13, fontweight="bold", ha="center", va="center")
+    ax.text(page[0] / 2, page[1] - 27,
+            f"{p.L:g}×{p.W:g}×{p.H:g} mm · 槽 {p.sl:g}×{p.sw:g}×{p.sh:g} ×{d['n']} · "
+            f"{_scale_tag(sc, not manual)} · 单位 mm · {_today()} · 生成：{author}",
+            fontsize=8, ha="center", va="center", color="0.15")
     y0 = TY - 40.0
     for i, line in enumerate(notes):
         ax.text(42.0, y0 - i * 7.4, line, fontsize=6.8, color="0.12")

@@ -2,55 +2,105 @@
   "flutes": {
     "B": {
       "code": "B",
+      "flutes": "B",
+      "cls": "single",
+      "material": "A版单瓦",
       "name": "A版 单瓦（B 楞）",
       "t": 3.0,
       "edge": null,
       "burst": null,
-      "note": "飞书表厚度列缺失→按 GB/T 6544 B 楞典型值补",
-      "source": "feishu+GB/T6544"
+      "price": 2.06,
+      "note": "边压/耐破飞书表未维护",
+      "source": "feishu:隔板+瓦楞纸箱"
     },
     "BC": {
       "code": "BC",
+      "flutes": "BC",
+      "cls": "double",
+      "material": "A版双瓦",
       "name": "A版 双瓦（BC 楞）",
+      "t": 7.0,
+      "edge": null,
+      "burst": null,
+      "price": 2.68,
+      "note": "边压/耐破飞书表未维护",
+      "source": "feishu:隔板+瓦楞纸箱"
+    },
+    "C": {
+      "code": "C",
+      "flutes": "C",
+      "cls": "single",
+      "material": "超密封K单瓦",
+      "name": "超密封 K 单瓦（C 楞）",
+      "t": 4.0,
+      "edge": null,
+      "burst": null,
+      "price": 3.85,
+      "note": "边压/耐破飞书表未维护",
+      "source": "feishu:隔板+瓦楞纸箱"
+    },
+    "BC-K": {
+      "code": "BC-K",
+      "flutes": "BC",
+      "cls": "double",
+      "material": "超密封K双瓦",
+      "name": "超密封 K 双瓦（BC 楞）",
       "t": 7.0,
       "edge": 5550,
       "burst": 961,
+      "price": 6.33,
       "note": "",
       "source": "feishu"
     },
     "BC-HS": {
       "code": "BC-HS",
-      "name": "超密封 K 双瓦（高强 BC）",
+      "flutes": "BC",
+      "cls": "double",
+      "material": "高强超密封",
+      "name": "高强超密封（BC 楞）",
       "t": 7.0,
       "edge": 10000,
       "burst": 2400,
+      "price": 10.8,
       "note": "",
       "source": "feishu"
     },
-    "C": {
-      "code": "C",
-      "name": "超密封 K 单瓦（C 楞）",
-      "t": 4.0,
+    "AA": {
+      "code": "AA",
+      "flutes": "AA",
+      "cls": "double",
+      "material": "AA双瓦",
+      "name": "AA 双瓦（AA 楞）",
+      "t": 10.0,
       "edge": null,
       "burst": null,
-      "note": "飞书表数值列缺失→按 GB/T 6544 C 楞典型值补",
-      "source": "feishu+GB/T6544"
+      "price": 11.25,
+      "note": "厚度按 GB/T 6544 A+A 名义值 10mm；边压/耐破飞书表未维护",
+      "source": "feishu:隔板 + GB/T6544"
     },
     "ABC": {
       "code": "ABC",
-      "name": "ABC 三层（超密封）",
+      "flutes": "ABC",
+      "cls": "triple",
+      "material": "ABC三瓦",
+      "name": "ABC 三瓦",
       "t": 12.0,
       "edge": 18500,
       "burst": 2295,
+      "price": 15.93,
       "note": "",
       "source": "feishu"
     },
     "AAA": {
       "code": "AAA",
-      "name": "AAA 三层（超密封）",
+      "flutes": "AAA",
+      "cls": "triple",
+      "material": "AAA三瓦",
+      "name": "AAA 三瓦",
       "t": 15.0,
       "edge": 21000,
       "burst": 3100,
+      "price": 26.8,
       "note": "",
       "source": "feishu"
     }
@@ -120,14 +170,14 @@
         1.0,
         3.0
       ],
-      "src": "盖内与围框外单边间隙（FEFCO 0310 实践）"
+      "src_box": "盖内与围框外单边间隙（FEFCO 0310 实践）"
     },
     "0312": {
       "box_gap": [
         1.0,
         3.0
       ],
-      "src": "天盖与底箱单边间隙（FEFCO 0312 实践）"
+      "src_box": "天盖与底箱单边间隙（FEFCO 0312 实践）"
     }
   }
 }

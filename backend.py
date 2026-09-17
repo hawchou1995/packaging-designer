@@ -68,6 +68,15 @@ def _save_pdf_png_svg(fig, outdir, name):
     return out
 
 
+def _scale_row(fig):
+    sc = getattr(fig, "_scale_used", None)
+    if sc is None:
+        return []
+    from drawutil import scale_str
+    auto = bool(getattr(fig, "_scale_auto", True))
+    return [("比例", f"{scale_str(sc)}（{'自动' if auto else '手动'}）")]
+
+
 def _md(outdir, name, lines):
     fp = os.path.join(outdir, name)
     with open(fp, "w", encoding="utf-8") as fh:
@@ -79,6 +88,7 @@ def frame_meta(frame=None):
     """图框公共字段：单位名称 + 设计/制图/审核/批准（界面「设置」里维护，图框内锁定）。"""
     f = dict(frame or {})
     return dict(company=f.get("company") or "上海银轮热交换系统有限公司",
+                author=f.get("author") or "包装周哥",
                 designed=f.get("designed", ""), drawn=f.get("drawn", ""),
                 checked=f.get("checked", ""), approved=f.get("approved", ""))
 
@@ -117,7 +127,7 @@ def flute_defaults(code, box=None):
 
 
 # ================================================================ 片材
-def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None):
+def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None, scale=None):
     from sheet_core import Params, report
     from sheet_draw import build_sheet
     from sheet_make import write_dxf, export_step, write_stl, render_axo
@@ -129,8 +139,9 @@ def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, os.path.join(outdir, pre + "片材轮廓_1-1.dxf"))]
-    files += _save_pdf_png_svg(build_sheet(p, meta=frame_meta(frame)), outdir,
-                               pre + "图纸-三视图+轴测图_A3")
+    fig = build_sheet(p, meta=frame_meta(frame), scale=scale)
+    rows += _scale_row(fig)
+    files += _save_pdf_png_svg(fig, outdir, pre + "图纸-三视图+轴测图_A3")
     files += render_axo(p, os.path.join(outdir, pre + "轴测图"))
     stp = os.path.join(outdir, pre + "三维模型.step")
     bb = export_step(p, stp)
@@ -152,7 +163,7 @@ def run_sheet(L, W, H, outdir, prefix="", name="片材", material="", frame=None
 
 # ================================================================ 仿形垫块
 def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
-              open_side="front", name="仿形块", material="", frame=None):
+              open_side="front", name="仿形块", material="", frame=None, scale=None):
     from block_core import Params, report
     from block_model import items, write_dxf, export_step, write_stl, stl_check
     from block_draw import build_sheet, render_axo
@@ -165,8 +176,9 @@ def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, d, os.path.join(outdir, pre + "仿形块俯视_1-1.dxf"))]
-    files += _save_pdf_png_svg(build_sheet(p, d, meta=frame_meta(frame)),
-                               outdir, pre + "图纸-三视图+轴测图_A3")
+    fig = build_sheet(p, d, meta=frame_meta(frame), scale=scale)
+    rows += _scale_row(fig)
+    files += _save_pdf_png_svg(fig, outdir, pre + "图纸-三视图+轴测图_A3")
     files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
     it = items(p, d)
     stp = os.path.join(outdir, pre + "三维模型.step")
@@ -193,7 +205,7 @@ def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
 
 # ================================================================ 网格刀卡
 def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
-              version=1, name="瓦楞刀卡网格"):
+              version=1, name="瓦楞刀卡网格", price=None):
     """即时计算：→ (Params, rows, d)。"""
     from grid_core import Params, report
     L, W, H = container
@@ -207,23 +219,33 @@ def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
     errs, rows, d = report(p)
     if errs:
         raise ValueError("；".join(errs))
+    d["price"] = None
+    if price:
+        import price_lib
+        prows, ptot = price_lib.quote_grid(dict(p=p, d=d), price.get("code", "BC"),
+                                           price.get("code_seps"), price.get("allow", 15.0),
+                                           price.get("labor", 0.0), price.get("qty", 1.0))
+        d["price"] = ptot
+        rows = rows + [("— 报价（飞书口径）", "")] + prows
     return p, rows, d
 
 
 def run_grid(container, cell, t, outdir, prefix="", slot_w=None, sep_t=None,
-             pads="both", version=1, name="瓦楞刀卡网格", frame=None):
+             pads="both", version=1, name="瓦楞刀卡网格", frame=None, scale=None,
+             price=None):
     """container=(L,W,H) 容器内尺寸（= 内衬外尺寸）；cell=(l,w,h) 每格；t=刀卡厚。"""
     from grid_model import items, write_dxf, export_step, write_stl, stl_check
     from grid_draw import build_sheet, render_axo
-    p, rows, d = grid_plan(container, cell, t, slot_w, sep_t, pads, version, name)
+    p, rows, d = grid_plan(container, cell, t, slot_w, sep_t, pads, version, name, price)
     L, W, H = container
     t_used = p.t
     slot_w_eff = slot_w if slot_w else (t_used + p.slot_clear)
     os.makedirs(outdir, exist_ok=True)
     pre = _pre(prefix)
     files = [write_dxf(p, d, os.path.join(outdir, pre + "刀卡展开图_1-1.dxf"))]
-    files += _save_pdf_png_svg(build_sheet(p, d, meta=frame_meta(frame)),
-                               outdir, pre + "图纸-网格俯视+刀卡侧视+轴测图_A3")
+    fig = build_sheet(p, d, meta=frame_meta(frame), scale=scale)
+    rows += _scale_row(fig)
+    files += _save_pdf_png_svg(fig, outdir, pre + "图纸-网格俯视+刀卡侧视+轴测图_A3")
     files += render_axo(p, d, os.path.join(outdir, pre + "轴测图"))
     it = items(p, d)
     stp = os.path.join(outdir, pre + "三维模型-刀卡网格.step")
@@ -244,8 +266,9 @@ def run_grid(container, cell, t, outdir, prefix="", slot_w=None, sep_t=None,
         f"- 短刀卡 每层 {d['cards_short']} 张 × {d['layers']} 层 = {d['cards_short_total']} 张（{d['Wc']:g} × {d['cell_h']:g}）",
         f"- 隔板 中间 {d['seps_mid']} + 底/顶 {d['seps_tb']} = {d['seps_total']} 张 {L:g} × {W:g} × {d['st']:g}",
         f"- 刀卡厚 {t_used:g}；开槽宽 {slot_w_eff:g}；堆叠高 {d['H_stack']:g} ≤ {H:g}（余量 {d['H_slack']:g}）",
-        f"- 用纸：刀卡 {d['area_cards']:.4f} m² + 隔板 {d['area_seps']:.4f} m²",
-    ]))
+        f"- 用纸（几何）：刀卡 {d['area_cards']:.4f} m² + 隔板 {d['area_seps']:.4f} m²",
+    ] + (["", "## 报价（飞书口径：面积×单价+人工费）"] +
+         [f"- {k}：{v}" for k, v in price_lib_rows(d)] if d.get("price") else [])))
     return Result(files, rows, d)
 
 
@@ -317,6 +340,52 @@ def box_dim_rows(box, p):
     return [("外尺寸（组装）", _fmt3(outer)), ("制造尺寸", _fmt3(mfr)), ("内尺寸（内腔）", _fmt3(inner))]
 
 
+# 核心模块 report() 的英文键 → 中文（摘要可读性）
+KEY_ZH = {
+    "outer L*W*H": "外尺寸 L×W×H",
+    "inner": "内尺寸",
+    "manufacturer": "制造尺寸",
+    "board t": "纸板厚度 t",
+    "outer flap depth": "外摇盖深",
+    "inner flap depth": "内摇盖深",
+    "slot width": "开槽宽",
+    "glue lap": "接舌宽",
+    "blank size": "展开尺寸",
+    "blank area": "展开面积（几何）",
+    "assembled outer": "组装外尺寸",
+    "board t (sleeve/top/bot)": "板厚 围框/上盖/下盖",
+    "cap outer / inner": "盖 外/内",
+    "sleeve outer": "围框外尺寸",
+    "sleeve mfr": "围框制造尺寸",
+    "cover depth d": "罩深 d（每盖）",
+    "wall blank (BLD)": "墙板宽 BLD",
+    "cap centre panel": "盖顶板尺寸",
+    "sleeve blank": "围框展开",
+    "cap blank (x2)": "盖展开（×2）",
+    "total area": "用纸合计",
+    "lid outer / inner": "天盖 外/内",
+    "base outer": "底箱外尺寸",
+    "base mfr": "底箱制造尺寸",
+    "cover depth": "罩深",
+    "lid wall blank": "天盖墙板宽",
+    "base flaps": "底摇盖 外/内",
+    "base blank": "底箱展开",
+    "lid blank": "天盖展开",
+}
+_CORE_DUP = {"outer L*W*H", "inner", "manufacturer", "assembled outer", "sleeve outer",
+             "base outer", "lid outer / inner", "cap outer / inner"}
+
+
+def _zh_rows(rows, drop_dup=True):
+    """核心 report 行 → 中文键；可去掉与「尺寸链」重复的行。"""
+    out = []
+    for k, v in rows:
+        if drop_dup and k in _CORE_DUP:
+            continue
+        out.append((KEY_ZH.get(k, k), v))
+    return out
+
+
 def _flute_desc(box, flutes):
     """长描述（技术说明用）。"""
     if box == "0201":
@@ -369,7 +438,7 @@ def _validate(box, flutes, params):
                 raise ValueError(f"间隙 {float(v):g} mm 超出区间 {lo:g}–{hi:g}")
 
 
-def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None):
+def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price=None):
     """即时计算（界面每次改参数都调）：→ dict(p=, rows=, meta=, desc=, short=, L/W/H)。"""
     flutes = _box_resolve(box, flutes)
     params = dict(params or {})
@@ -422,6 +491,15 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None):
     errs, rows = report(p)
     if errs:
         raise ValueError("；".join(errs))
+    quote = None
+    if price:
+        import price_lib
+        plan_seed = dict(p=p, flutes=flutes)
+        qrows, qtot = price_lib.quote_box(box, plan_seed, price.get("allow"),
+                                          price.get("labor", 0.0), price.get("qty", 1.0))
+        rows = rows + [("— 报价（飞书口径）", "")] + qrows
+        quote = qtot
+    rows = _zh_rows(rows)
     nm = name or {"0201": f"FEFCO 0201 开槽箱 {L:g}×{W:g}×{H:g}",
                   "0310": f"FEFCO 0310 围框+两盖 {L:g}×{W:g}×{H:g}",
                   "0312": f"FEFCO 0312 有底无盖+平顶罩盖 {L:g}×{W:g}×{H:g}"}[box]
@@ -444,11 +522,11 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None):
     meta = dict(extra, name=nm, material=f"{short}（可折叠）",
                 caption=f"{short} · 组装外尺寸 {L:g}×{W:g}×{H:g} · 单位 mm · {_today()} · 生成：ZCode 参数化管线")
     return dict(p=p, rows=rows, meta=meta, desc=desc, short=short, flutes=flutes,
-                params=params, L=L, W=W, H=H, inner=inner, mode=mode,
+                params=params, L=L, W=W, H=H, inner=inner, mode=mode, quote=quote,
                 inner_in=inner_in, name=nm)
 
 
-def box_export(box, plan, outdir, prefix="", frame=None):
+def box_export(box, plan, outdir, prefix="", frame=None, scale=None):
     """出图（耗时；界面放到后台线程里跑）。"""
     from box0210_3d import build_items_from, render_view, export_solids, write_stl_file, stl_check
     p, rows = plan["p"], plan["rows"]
@@ -463,8 +541,9 @@ def box_export(box, plan, outdir, prefix="", frame=None):
         ic = build_items_from(panels(p), False)
         io_ = open_items(build_items_from(panels(p), True), p)
         files.append(write_dxf(p, os.path.join(outdir, pre + "展开图_dieline_1-1.dxf")))
-        files += _save_pdf_png_svg(build_sheet(p, items_closed=ic, items_open=io_, meta=meta),
-                                   outdir, pre + "图纸-展开图+轴测图_A3")
+        fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
+        rows += _scale_row(fig)
+        files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
         stp = os.path.join(outdir, pre + "三维模型-闭合.step")
         bb = export_solids(p, False, stp, items=ic)
         d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -482,6 +561,9 @@ def box_export(box, plan, outdir, prefix="", frame=None):
             "# FEFCO 0201 开槽箱 参数表", ""] +
             [f"- {k}：{v}" for k, v in box_dim_rows(box, p)] +
             [f"- 纸板：{plan['desc']}",
+             f"- 展开（几何）：接舌 {p.glue_w:g} + 2×({p.Lm:g} + {p.Wm:g})；摇盖 外 {p.fo:g} / 内 {p.fi:g}；开槽宽 {p.slot_w:g}",
+             f"- 报价（飞书口径）：面积 {plan['quote']['area']:.4f} m²；每套 ¥{plan['quote']['per_set']:.2f}"] if plan.get("quote") else
+            [f"- 纸板：{plan['desc']}",
              f"- 展开：接舌 {p.glue_w:g} + 2×({p.Lm:g} + {p.Wm:g})；摇盖 外 {p.fo:g} / 内 {p.fi:g}；开槽宽 {p.slot_w:g}"]))
         return Result(files, rows)
 
@@ -491,8 +573,9 @@ def box_export(box, plan, outdir, prefix="", frame=None):
         ic = build_items_from(panels(p), False)
         io_ = lift_items(lift_items(ic, "cap_bot", -70.0), "cap_top", 110.0)
         files.append(write_dxf(p, os.path.join(outdir, pre + "展开图_dieline_1-1.dxf")))
-        files += _save_pdf_png_svg(build_sheet(p, items_closed=ic, items_open=io_, meta=meta),
-                                   outdir, pre + "图纸-展开图+轴测图_A3")
+        fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
+        rows += _scale_row(fig)
+        files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
         stp = os.path.join(outdir, pre + "三维模型-组装.step")
         bb = export_solids(p, False, stp, items=ic)
         d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -512,7 +595,9 @@ def box_export(box, plan, outdir, prefix="", frame=None):
             [f"- 材料：{plan['desc']}",
              f"- 围框制造 {p.sleeve_Lm:g}×{p.sleeve_Wm:g}，高 {p.sleeve_H:g}（= 外高 − t上盖 − t下盖）",
              f"- 上盖中心 {p.cap_Lm:g}×{p.cap_Wm:g}，墙深 {p.wall_blank:g}；下盖中心 {p.cap_Lm_bot:g}×{p.cap_Wm_bot:g}，墙深 {p.wall_blank_bot:g}；罩深 {p.d_cover:g}",
-             f"- 盖内腔 {p.L-2*p.tcmax:g}×{p.W-2*p.tcmax:g}（按较厚盖板）；围框外 = 盖内 − 2×{p.gap:g}；两盖腰线对接"]))
+             f"- 盖内腔 {p.L-2*p.tcmax:g}×{p.W-2*p.tcmax:g}（按较厚盖板）；围框外 = 盖内 − 2×{p.gap:g}；两盖腰线对接"]
+            + ([f"- 报价（飞书口径）：面积 {plan['quote']['area']:.4f} m²；每套 ¥{plan['quote']['per_set']:.2f}"]
+               if plan.get("quote") else [])))
         return Result(files, rows)
 
     from box0312_core import panels, lift_items
@@ -520,8 +605,9 @@ def box_export(box, plan, outdir, prefix="", frame=None):
     ic = build_items_from(panels(p), False)
     io_ = lift_items(ic, "lid", 120.0)
     files.append(write_dxf(p, os.path.join(outdir, pre + "展开图_dieline_1-1.dxf")))
-    files += _save_pdf_png_svg(build_sheet(p, items_closed=ic, items_open=io_, meta=meta),
-                               outdir, pre + "图纸-展开图+轴测图_A3")
+    fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
+    rows += _scale_row(fig)
+    files += _save_pdf_png_svg(fig, outdir, pre + "图纸-展开图+轴测图_A3")
     stp = os.path.join(outdir, pre + "三维模型-组装.step")
     bb = export_solids(p, False, stp, items=ic)
     d3 = tuple(round(bb[i + 3] - bb[i], 3) for i in range(3))
@@ -540,15 +626,26 @@ def box_export(box, plan, outdir, prefix="", frame=None):
         [f"- {k}：{v}" for k, v in box_dim_rows(box, p)] +
         [f"- 材料：{plan['desc']}",
          f"- 底箱制造 {p.base_Lm:g}×{p.base_Wm:g}×{p.base_Hm:g}；摇盖 外 {p.base_fo:g}/内 {p.base_fi:g}；开槽 {p.slot_w:g}",
-         f"- 天盖内腔 {p.L-2*p.tl:g}×{p.W-2*p.tl:g}；罩深 {p.cover_depth:g}；盖墙深 {p.lid_wall_blank:g}"]))
+         f"- 天盖内腔 {p.L-2*p.tl:g}×{p.W-2*p.tl:g}；罩深 {p.cover_depth:g}；盖墙深 {p.lid_wall_blank:g}"]
+        + ([f"- 报价（飞书口径）：面积 {plan['quote']['area']:.4f} m²；每套 ¥{plan['quote']['per_set']:.2f}"]
+           if plan.get("quote") else [])))
     return Result(files, rows)
 
 
 def run_box(box, dims, outdir, mode="outer", flutes=None, params=None,
-            prefix="", name=None, frame=None):
+            prefix="", name=None, frame=None, scale=None, price=None):
     """box: '0201' | '0310' | '0312'；dims=(L,W,H) 外尺寸(mode='outer')或内腔(mode='inner')。"""
-    plan = box_plan(box, dims, mode=mode, flutes=flutes, params=params, name=name)
-    return box_export(box, plan, outdir, prefix=prefix, frame=frame)
+    plan = box_plan(box, dims, mode=mode, flutes=flutes, params=params, name=name, price=price)
+    return box_export(box, plan, outdir, prefix=prefix, frame=frame, scale=scale)
+
+
+def price_lib_rows(d):
+    """网格报价行 → 参数表行。"""
+    q = d.get("price")
+    if not q:
+        return []
+    return [("面积", f"{q['area']:.4f} m²"), ("纸材合计", f"¥ {q['paper']:.2f}"),
+            ("人工费", f"¥ {q['labor']:.2f}"), ("每套", f"¥ {q['per_set']:.2f}")]
 
 
 # ================================================================ CLI 冒烟

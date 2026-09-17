@@ -83,9 +83,11 @@ def param_lines_zh(p: Params, mat_sleeve: str = "BC 双瓦楞纸板",
     ]
 
 
-def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
+def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
     meta = meta or {}
+    author = meta.get("author", "包装周哥")
+    manual = scale is not None and float(scale) > 0
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -94,9 +96,15 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
     gsb = layout_cap(p, "bot")
     gst = layout_cap(p, "top")
     same_caps = abs(p.tc - p.tc2) < 1e-9
+    from drawutil import pick_scale, scale_str, scale_tag
+    if not manual:
+        total_w = max(si_s["blank_w"], gsb["W1"] + 60.0 + gst["W1"])
+        total_h = si_s["blank_h"] + 80.0 + max(gsb["H1"], gst["H1"])
+        scale = pick_scale(total_w, total_h, 240.0, 166.0)
 
     pw, ph = page
     fig = plt.figure(figsize=(pw / 25.4, ph / 25.4))
+    fig._scale_used, fig._scale_auto = scale, not manual
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, pw)
     ax.set_ylim(0, ph)
@@ -104,7 +112,8 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
     ax.axis("off")
 
     # --- sleeve blank (top) ---
-    ox, oy = 41.4, 224.0
+    ox = 42.0 + max(0.0, (246.0 - si_s["blank_w"] / scale) / 2.0)
+    oy = 262.0 - si_s["blank_h"] / scale
     T1 = lambda x, y: (ox + x / scale, oy + y / scale)
     sp = [T1(*q) for q in so] + [T1(*so[0])]
     ax.plot([q[0] for q in sp], [q[1] for q in sp], color="k", lw=0.7)
@@ -129,9 +138,12 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
     ax.text(T1(0, 0)[0] - 14, oy + 8, "围框（×1）", fontsize=7.5, ha="left", color="0.1")
 
     # --- cap blanks (bottom row: 下盖 / 上盖，板厚不同则尺寸不同) ---
-    cap_ox = [52.0, 52.0 + gsb["W1"] / scale + 10.0]
+    caps_w = (gsb["W1"] + gst["W1"]) / scale + 10.0
+    cap0 = 42.0 + max(0.0, (246.0 - caps_w) / 2.0)
+    cap_ox = [cap0, cap0 + gsb["W1"] / scale + 10.0]
+    cap_top_y = oy - 40.0
     for (k, ox2) in enumerate(cap_ox):
-        oy2 = 118.0
+        oy2 = cap_top_y - gsb["H1" if k == 0 else "H1"] / scale if False else cap_top_y - (gsb["H1"] if k == 0 else gst["H1"]) / scale
         which = "bot" if k == 0 else "top"
         co, cc, cuts, ci = dieline_cap(p, which)
         gs = gsb if k == 0 else gst
@@ -163,13 +175,14 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
             dim_v(ax, T2(0, gs["H0"])[1], T2(0, gs["H1"])[1], ox2 - 17.0, "展开高 " + g(gs["H1"]))
 
     # --- title / legend / notes ---
-    ax.text(pw / 2, ph - 14, meta.get("title", "FEFCO 0310 围框+两盖 · 展开图 + 轴测图"),
+    ax.text(pw / 2, ph - 20, meta.get("title", "FEFCO 0310 围框+两盖 · 展开图 + 轴测图"),
             ha="center", va="center", fontsize=13, fontweight="bold")
     _cap_t = (f"盖 t={g(p.tc)}" if abs(p.tc - p.tc2) < 1e-9
               else f"上盖 t={g(p.tc)} / 下盖 t={g(p.tc2)}")
-    ax.text(pw / 2, ph - 22,
+    ax.text(pw / 2, ph - 27,
             meta.get("caption",
-                     f"围框 t={g(p.ts)} · {_cap_t} · 组装外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)} · 比例 1:{scale:g} · 单位 mm · {_today()} · 生成：ZCode 参数化管线"),
+                     f"围框 t={g(p.ts)} · {_cap_t} · 组装外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)}"
+                     f" · {scale_tag(scale, not manual)} · 单位 mm · {_today()} · 生成：{author}"),
             ha="center", va="center", fontsize=8)
     ax.text(38.0, 89.0, f"图例：实线 = 裁切切口；虚线 = 压线（折痕）；尺寸单位 mm；图样比例 = 纸上 1:{scale:g}",
             ha="left", va="top", fontsize=6.8, color="0.0", fontweight="bold")
@@ -190,7 +203,7 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
                name=meta.get("name", f"FEFCO 0310 围框+两盖 {p.L:g}×{p.W:g}×{p.H:g}"),
                material=meta.get("material", f"BC 双瓦楞 t={p.tc:g}（可折叠）"),
                dwgno=meta.get("dwgno", "0310-BC-400x300x200"),
-               scale_str=f"1:{scale:g}", sheet="A3",
+               scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
                checked=meta.get("checked", ""), approved=meta.get("approved", ""))

@@ -186,16 +186,16 @@ def check(p: Params):
 def report(p: Params):
     errs, info = check(p)
     rows = [
-        ("outer L*W*H", f"{p.L:g} x {p.W:g} x {p.H:g}"),
-        ("inner", f"{p.Li:g} x {p.Wi:g} x {p.Hi:g}"),
-        ("manufacturer", f"{p.Lm:g} x {p.Wm:g} x {p.Hm:g}"),
-        ("board t", f"{p.t:g} (BC double wall)"),
-        ("outer flap depth", f"{p.fo:g} (= Wm/2 + {p.flap_gain:g})"),
-        ("inner flap depth", f"{p.fi:g} (= Wm/2 - {p.flap_reduce:g})"),
-        ("slot width", f"{p.slot_w:g}"),
-        ("glue lap", f"{p.glue_w:g}"),
-        ("blank size", f"{info['blank_w']:g} x {info['blank_h']:g}"),
-        ("blank area", f"{info['blank_w'] * info['blank_h'] / 1e6:.4f} m2"),
+        ("外尺寸 L×W×H", f"{p.L:g} × {p.W:g} × {p.H:g}"),
+        ("内尺寸", f"{p.Li:g} × {p.Wi:g} × {p.Hi:g}"),
+        ("制造尺寸", f"{p.Lm:g} × {p.Wm:g} × {p.Hm:g}"),
+        ("纸板厚度 t", f"{p.t:g}"),
+        ("外摇盖深", f"{p.fo:g}（= W制/2 + {p.flap_gain:g}）"),
+        ("内摇盖深", f"{p.fi:g}（= W制/2 − {p.flap_reduce:g}）"),
+        ("开槽宽", f"{p.slot_w:g}"),
+        ("接舌宽", f"{p.glue_w:g}"),
+        ("展开尺寸", f"{info['blank_w']:g} × {info['blank_h']:g}"),
+        ("展开面积（几何）", f"{info['blank_w'] * info['blank_h'] / 1e6:.4f} m²"),
     ]
     return errs, rows
 

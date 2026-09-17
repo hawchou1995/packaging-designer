@@ -14,7 +14,7 @@ import theme
 GITHUB_URL = "https://github.com/hawchou1995/packaging-designer"
 AUTHOR = "周豪 · 供应链管理部"
 APP_NAME = "包装设计器 Packaging Designer"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DESC = ("面向瓦楞纸包装的参数量出图工具：片材、仿形垫块、网格刀卡、FEFCO 0201 / 0310 / 0312 纸箱。\n"
         "一次输入即产出 A3 图纸（展开图 + 轴测图 + GB 图框）、1:1 DXF、STEP/STL 数模与参数表。")
 
@@ -63,6 +63,9 @@ class SettingsDialog(QDialog):
         f.addRow("默认文件名前缀", self.e_prefix)
         self.e_company = QLineEdit(self.settings.company)
         f.addRow("图框 · 单位名称", self.e_company)
+        self.e_author = QLineEdit(self.settings.author)
+        self.e_author.setPlaceholderText("出现在图纸副标题「生成：…」与参数表里")
+        f.addRow("图纸 · 生成人", self.e_author)
         self.e_designed = QLineEdit(self.settings.designed)
         self.e_drawn = QLineEdit(self.settings.drawn)
         self.e_checked = QLineEdit(self.settings.checked)
@@ -144,6 +147,7 @@ class SettingsDialog(QDialog):
         s.outdir = self.e_out.text().strip() or s.outdir
         s.prefix = self.e_prefix.text().strip()
         s.company = self.e_company.text().strip() or s.company
+        s.author = self.e_author.text().strip() or s.author
         s.designed = self.e_designed.text().strip()
         s.drawn = self.e_drawn.text().strip()
         s.checked = self.e_checked.text().strip()

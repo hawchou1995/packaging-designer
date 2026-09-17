@@ -191,18 +191,18 @@ def report(p: Params):
     same_caps = abs(p.tc - p.tc2) < 1e-9
     rows = [
         ("assembled outer", f"{p.L:g} x {p.W:g} x {p.H:g}"),
-        ("board t (sleeve/top/bot)", f"{p.ts:g} / {p.tc:g} / {p.tc2:g}"),
-        ("cap outer / inner", f"{p.L:g}x{p.W:g} / {p.L - 2 * p.tcmax:g}x{p.W - 2 * p.tcmax:g}"),
-        ("sleeve outer", f"{p.sleeve_L:g} x {p.sleeve_W:g} x {p.sleeve_H:g}"),
-        ("sleeve mfr", f"{p.sleeve_Lm:g} x {p.sleeve_Wm:g}"),
-        ("cover depth d", f"{p.d_cover:g} (each cap; end-to-end)"),
-        ("wall blank (BLD)", f"top {p.wall_blank:g} / bot {p.wall_blank_bot:g}"),
-        ("cap centre panel", f"top {p.cap_Lm:g}x{p.cap_Wm:g} / bot {p.cap_Lm_bot:g}x{p.cap_Wm_bot:g}"),
-        ("sleeve blank", f"{i_s['blank_w']:g} x {i_s['blank_h']:g}"),
-        ("cap blank (x2)", f"{i_ct['blank_w']:g}x{i_ct['blank_h']:g} / "
-                           f"{i_cb['blank_w']:g}x{i_cb['blank_h']:g}"
-                           f"（{'同款' if same_caps else '上/下不同'}）"),
-        ("total area", f"{area:.4f} m2"),
+        ("板厚 围框/上盖/下盖", f"{p.ts:g} / {p.tc:g} / {p.tc2:g}"),
+        ("盖 外 / 内", f"{p.L:g}×{p.W:g} / {p.L - 2 * p.tcmax:g}×{p.W - 2 * p.tcmax:g}"),
+        ("围框外尺寸", f"{p.sleeve_L:g} × {p.sleeve_W:g} × {p.sleeve_H:g}"),
+        ("围框制造", f"{p.sleeve_Lm:g} × {p.sleeve_Wm:g}"),
+        ("罩深 d（每盖，端对端）", f"{p.d_cover:g}"),
+        ("墙板宽 BLD", f"上盖 {p.wall_blank:g} / 下盖 {p.wall_blank_bot:g}"),
+        ("盖顶板", f"上盖 {p.cap_Lm:g}×{p.cap_Wm:g} / 下盖 {p.cap_Lm_bot:g}×{p.cap_Wm_bot:g}"),
+        ("围框展开", f"{i_s['blank_w']:g} × {i_s['blank_h']:g}"),
+        ("盖展开（×2）", f"{i_ct['blank_w']:g}×{i_ct['blank_h']:g} / "
+                          f"{i_cb['blank_w']:g}×{i_cb['blank_h']:g}"
+                          f"（{'同款' if same_caps else '上下不同'}）"),
+        ("用纸合计（几何）", f"{area:.4f} m²"),
     ]
     return errs, rows
 

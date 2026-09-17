@@ -11,6 +11,7 @@ DEFAULTS = dict(
     outdir=os.path.join(os.path.expanduser("~"), "Documents", "Packaging"),
     prefix="",
     company="上海银轮热交换系统有限公司",
+    author="包装周哥",
     designed="", drawn="", checked="", approved="",
     open_after=True,
 )
@@ -22,6 +23,7 @@ class Settings:
         self.outdir = str(self.q.value("outdir", DEFAULTS["outdir"]))
         self.prefix = str(self.q.value("prefix", DEFAULTS["prefix"]))
         self.company = str(self.q.value("company", DEFAULTS["company"]))
+        self.author = str(self.q.value("author", DEFAULTS["author"]))
         self.designed = str(self.q.value("designed", DEFAULTS["designed"]))
         self.drawn = str(self.q.value("drawn", DEFAULTS["drawn"]))
         self.checked = str(self.q.value("checked", DEFAULTS["checked"]))
@@ -32,6 +34,7 @@ class Settings:
         self.q.setValue("outdir", self.outdir)
         self.q.setValue("prefix", self.prefix)
         self.q.setValue("company", self.company)
+        self.q.setValue("author", self.author)
         self.q.setValue("designed", self.designed)
         self.q.setValue("drawn", self.drawn)
         self.q.setValue("checked", self.checked)
@@ -41,5 +44,5 @@ class Settings:
 
     def frame(self):
         """传给 backend 的图框字段。"""
-        return dict(company=self.company, designed=self.designed, drawn=self.drawn,
-                    checked=self.checked, approved=self.approved)
+        return dict(company=self.company, author=self.author, designed=self.designed,
+                    drawn=self.drawn, checked=self.checked, approved=self.approved)

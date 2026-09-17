@@ -189,15 +189,15 @@ def report(p: Params):
     area = (ib["blank_w"] * ib["blank_h"] + il["blank_w"] * il["blank_h"]) / 1e6
     rows = [
         ("assembled outer", f"{p.L:g} x {p.W:g} x {p.H:g}"),
-        ("lid outer / inner", f"{p.L:g}x{p.W:g} / {p.L - 2 * p.tl:g}x{p.W - 2 * p.tl:g}"),
-        ("base outer", f"{p.base_L:g} x {p.base_W:g} x {p.base_Hm + p.tb:g}"),
-        ("base mfr", f"{p.base_Lm:g} x {p.base_Wm:g}"),
-        ("cover depth", f"{p.cover_depth:g} (lid wall face; flat-top cap)"),
-        ("lid wall blank", f"{p.lid_wall_blank:g} (= depth + t/2)"),
-        ("base flaps", f"outer {p.base_fo:g} / inner {p.base_fi:g}"),
-        ("base blank", f"{ib['blank_w']:g} x {ib['blank_h']:g}"),
-        ("lid blank", f"{il['blank_w']:g} x {il['blank_h']:g}"),
-        ("total area", f"{area:.4f} m2"),
+        ("天盖 外 / 内", f"{p.L:g}×{p.W:g} / {p.L - 2 * p.tl:g}×{p.W - 2 * p.tl:g}"),
+        ("底箱外尺寸", f"{p.base_L:g} × {p.base_W:g} × {p.base_Hm + p.tb:g}"),
+        ("底箱制造", f"{p.base_Lm:g} × {p.base_Wm:g}"),
+        ("罩深（天盖墙高）", f"{p.cover_depth:g}"),
+        ("天盖墙板宽", f"{p.lid_wall_blank:g}（= 罩深 + t/2）"),
+        ("底摇盖 外/内", f"{p.base_fo:g} / {p.base_fi:g}"),
+        ("底箱展开", f"{ib['blank_w']:g} × {ib['blank_h']:g}"),
+        ("天盖展开", f"{il['blank_w']:g} × {il['blank_h']:g}"),
+        ("用纸合计（几何）", f"{area:.4f} m²"),
     ]
     return errs, rows
 

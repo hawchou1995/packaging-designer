@@ -29,12 +29,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings()
-        self.setWindowTitle(f"{APP_NAME} 1.0")
+        self.setWindowTitle(f"{APP_NAME} 1.0.1")
         ic = theme.icon_path("app.ico")
         if os.path.exists(ic):
             self.setWindowIcon(QIcon(ic))
-        self.setMinimumSize(1080, 720)
-        self.resize(1180, 780)
+        self.setMinimumSize(1200, 760)
+        self.resize(1320, 840)
 
         central = QWidget()
         h = QHBoxLayout(central)
@@ -161,7 +161,7 @@ def main():
         return 0
     w = MainWindow()
     if "--shot" in sys.argv:                 # 自检：渲染窗口截图后退出
-        w.resize(1180, 780)
+        w.resize(1320, 840)
         w.show()
         app.processEvents()
         idx = 0

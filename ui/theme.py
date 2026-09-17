@@ -114,6 +114,15 @@ QPushButton#Primary:hover {{ background: {ACCENT_HOVER}; border: 1px solid {ACCE
 QPushButton#Primary:pressed {{ background: {ACCENT_PRESS}; }}
 QPushButton#Primary:disabled {{ background: #A9BFBC; border: 1px solid #A9BFBC; color: #F2F5F4; }}
 QPushButton#Ghost {{ background: transparent; border: 0; color: {ACCENT}; padding: 2px 4px; }}
+QPushButton#Seg, QPushButton#FluteBtn {{
+    background: #FFFFFF; border: 1px solid {BORDER_STRONG}; border-radius: {RADIUS};
+    padding: 3px 10px; min-height: 20px; color: {TEXT2};
+}}
+QPushButton#Seg:hover, QPushButton#FluteBtn:hover {{ border: 1px solid {ACCENT}; color: {ACCENT}; }}
+QPushButton#Seg:checked, QPushButton#FluteBtn:checked {{
+    background: {ACCENT}; border: 1px solid {ACCENT}; color: #FFFFFF; font-weight: 600;
+}}
+QPushButton#FluteBtn {{ padding: 3px 7px; }}
 QPushButton#Ghost:hover {{ color: {ACCENT_PRESS}; text-decoration: underline; }}
 /* ---------- 列表 / 进度 ---------- */
 QListWidget {{

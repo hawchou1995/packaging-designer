@@ -69,9 +69,11 @@ def param_lines_zh(p: Params, mat_base: str = "BC 双瓦楞纸板", mat_lid: str
     ]
 
 
-def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
+def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
     meta = meta or {}
+    author = meta.get("author", "包装周哥")
+    manual = scale is not None and float(scale) > 0
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -79,9 +81,14 @@ def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
     bo, bc, bi = dieline_base(p)
     lo, lc, lcuts, li = dieline_lid(p)
     gl = layout_lid(p)
+    from drawutil import pick_scale, scale_str, scale_tag
+    if not manual:
+        scale = pick_scale(bi["blank_w"] + 60.0 + li["blank_w"],
+                           max(bi["blank_h"], li["blank_h"]), 240.0, 166.0)
 
     pw, ph = page
     fig = plt.figure(figsize=(pw / 25.4, ph / 25.4))
+    fig._scale_used, fig._scale_auto = scale, not manual
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, pw)
     ax.set_ylim(0, ph)
@@ -90,7 +97,8 @@ def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
     xm = lambda a, b: (a + b) / 2.0
 
     # ---------------- base blank (left) ----------------
-    ox, oy = 16.0, 224.3
+    ox = 42.0 + max(0.0, (246.0 - (bi["blank_w"] + 60.0 + li["blank_w"]) / scale) / 2.0)
+    oy = 262.0 - bi["blank_h"] / scale
     T1 = lambda x, y: (ox + x / scale, oy + y / scale)
     sp = [T1(*q) for q in bo] + [T1(*bo[0])]
     ax.plot([q[0] for q in sp], [q[1] for q in sp], color="k", lw=0.7)
@@ -122,7 +130,8 @@ def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
     ax.text(T1(0, 0)[0] - 14, oy + 20, "底箱（HSC，×1）", fontsize=7.0, ha="left", color="0.1")
 
     # ---------------- lid blank (right) ----------------
-    ox2, oy2 = 205.0, 186.0
+    ox2 = ox + bi["blank_w"] / scale + 60.0 / scale
+    oy2 = 262.0 - li["blank_h"] / scale
     T2 = lambda x, y: (ox2 + x / scale, oy2 + y / scale)
     lp = [T2(*q) for q in lo] + [T2(*lo[0])]
     ax.plot([q[0] for q in lp], [q[1] for q in lp], color="k", lw=0.7)
@@ -151,11 +160,12 @@ def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
             fontsize=7.0, ha="right", color="0.1")
 
     # ---------------- title / legend / notes ----------------
-    ax.text(pw / 2, ph - 14, meta.get("title", "FEFCO 0312 有底无盖+盖 · 展开图 + 轴测图"),
+    ax.text(pw / 2, ph - 20, meta.get("title", "FEFCO 0312 有底无盖+盖 · 展开图 + 轴测图"),
             ha="center", va="center", fontsize=13, fontweight="bold")
-    ax.text(pw / 2, ph - 22,
+    ax.text(pw / 2, ph - 27,
             meta.get("caption",
-                     f"BC 双瓦楞 t={g(p.tl)} · 组装外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)} · 比例 1:{scale:g} · 单位 mm · {_today()} · 生成：ZCode 参数化管线"),
+                     f"底箱 t={g(p.tb)} / 天盖 t={g(p.tl)} · 组装外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)}"
+                     f" · {scale_tag(scale, not manual)} · 单位 mm · {_today()} · 生成：{author}"),
             ha="center", va="center", fontsize=8)
     ax.text(38.0, 89.0, f"图例：实线 = 裁切切口；虚线 = 压线（折痕）；尺寸单位 mm；图样比例 = 纸上 1:{scale:g}",
             ha="left", va="top", fontsize=6.8, color="0.0", fontweight="bold")
@@ -175,7 +185,7 @@ def build_sheet(p: Params, scale: float = 7.5, page=(420.0, 297.0),
                name=meta.get("name", f"FEFCO 0312 有底无盖+平顶罩盖 {p.L:g}×{p.W:g}×{p.H:g}"),
                material=meta.get("material", f"BC 双瓦楞 t={p.tl:g}（可折叠）"),
                dwgno=meta.get("dwgno", "0312-BC-400x300x200"),
-               scale_str=f"1:{scale:g}", sheet="A3",
+               scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
                checked=meta.get("checked", ""), approved=meta.get("approved", ""))

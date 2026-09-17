@@ -49,10 +49,15 @@ def param_lines_zh(p: Params, info: dict, mat: str = "BC 双瓦楞纸板"):
     ]
 
 
-def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
+def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                 items_closed=None, items_open=None, meta: dict = None):
-    """A3 combined sheet: 1:scale dieline (left) + isometric views (right) + notes."""
+    """A3 combined sheet: 1:scale dieline (left) + isometric views (right) + notes.
+
+    scale=None → 按展开图外接框 × 图幅可用区（236×162mm）自动选最大可容纳档。
+    """
     meta = meta or {}
+    author = meta.get("author", "包装周哥")
+    manual = scale is not None and float(scale) > 0
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -72,9 +77,13 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
     xmax = max(q[0] for q in outline)
     ymin = min(q[1] for q in outline)
     ymax = max(q[1] for q in outline)
+    from drawutil import pick_scale, scale_str, scale_tag
+    if not manual:
+        scale = pick_scale(xmax - xmin, ymax - ymin, 236.0, 162.0)
     dw, dh = (xmax - xmin) / scale, (ymax - ymin) / scale
-    ox = 35.0 + (277.0 - dw) / 2.0
-    oy = 100.0 + (168.0 - dh) / 2.0
+    ox = 42.0 + max(0.0, (246.0 - dw) / 2.0)
+    oy = 94.0 + max(0.0, (172.0 - dh) / 2.0)
+    fig._scale_used, fig._scale_auto = scale, not manual
     T = lambda x, y: (ox + (x - xmin) / scale, oy + (y - ymin) / scale)
 
     sp = [T(x, y) for (x, y) in outline]
@@ -125,11 +134,12 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
     dim_h(ax, T(gd["X4a"], 0)[0], T(gd["X4b"], 0)[0], T(0, gd["Yt_o"])[1] + 6.0, "开槽宽 " + g(p.slot_w))
 
     # title
-    ax.text(pw / 2, ph - 14, meta.get("title", "FEFCO 0201 标准开槽箱（RSC）· 展开图（刀模图）"),
+    ax.text(pw / 2, ph - 20, meta.get("title", "FEFCO 0201 标准开槽箱（RSC）· 展开图（刀模图）"),
             ha="center", va="center", fontsize=13, fontweight="bold")
-    ax.text(pw / 2, ph - 22,
+    ax.text(pw / 2, ph - 27,
             meta.get("caption",
-                     f"BC 双瓦楞 t={g(p.t)} · 外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)} · 比例 1:{scale:g} · 单位 mm · {_today()} · 生成：ZCode 参数化管线"),
+                     f"{g(p.t)} mm 纸板 · 外尺寸 {g(p.L)}×{g(p.W)}×{g(p.H)} · {scale_tag(scale, not manual)}"
+                     f" · 单位 mm · {_today()} · 生成：{author}"),
             ha="center", va="center", fontsize=8)
 
     # legend + notes (bottom-left, under the dieline)
@@ -157,7 +167,7 @@ def build_sheet(p: Params, scale: float = 6.0, page=(420.0, 297.0),
                name=meta.get("name", f"FEFCO 0201 开槽箱（RSC）{p.L:g}×{p.W:g}×{p.H:g}"),
                material=meta.get("material", f"BC 双瓦楞 t={p.t:g}（可折叠）"),
                dwgno=meta.get("dwgno", "0201-BC-400x300x200"),
-               scale_str=f"1:{scale:g}", sheet="A3",
+               scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
                checked=meta.get("checked", ""), approved=meta.get("approved", ""))

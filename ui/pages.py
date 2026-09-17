@@ -1,21 +1,25 @@
 # -*- coding: utf-8 -*-
-"""pages.py — 四个模块页（片材 / 仿形垫块 / 网格刀卡 / 瓦楞纸箱）。
+"""pages.py — 四个模块页（片材 / 仿形垫块 / 网格刀卡 / 瓦楞纸箱）· v1.0.1
 
-统一结构：左列参数（标签在输入之上）+ 右列即时计算与预览 + 底部导出栏（目录/前缀/生成）。
-所有重型生成都在后台线程里跑，主线程只做即时计算（纯数学，毫秒级）。
+版式：参数表格化（标签左、控件右、每行 2 个）· 选择项分段按钮（无下拉）· 楞型紧凑按钮组；
+流程：**先生成**（出图到临时目录 + 预览）**再导出**（按「前缀_属性后缀」写到你选的目录）；
+比例：默认「自动」（按图幅可用区选最大可容纳档），可切「手动 1:x」。
 """
 import os
+import shutil
+import tempfile
 import traceback
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QScrollArea, QSizePolicy, QSplitter,
-                               QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget)
 
 import backend
-import theme
-from widgets import (BusyBar, Card, FileList, PreviewPane, ResultTable, TwoColForm,
-                     check_field, choice_field, int_field, num_field, open_path, text_field)
+import price_lib
+from widgets import (BusyBar, Card, FileList, GroupTable, PreviewPane, RowGrid, ScaleField,
+                     check_field, flute_field, num_field, open_path, seg_field, text_field)
+
+TMP_ROOT = os.path.join(tempfile.gettempdir(), "PackagingDesigner")
 
 
 class GenWorker(QThread):
@@ -29,29 +33,36 @@ class GenWorker(QThread):
     def run(self):
         try:
             self.done.emit(self.fn())
-        except (Exception, SystemExit) as e:      # 核心模块用 SystemExit 报参数错误
-            msg = str(e) or e.__class__.__name__
-            self.fail.emit(msg)
+        except (Exception, SystemExit) as e:
+            self.fail.emit(str(e) or e.__class__.__name__)
+
+
+def flute_options():
+    from flute_lib import FLUTES
+    return [(c, f["t"]) for c, f in FLUTES.items()]
 
 
 class BasePage(QWidget):
     title = ""
     subtitle = ""
-    preview_name = None            # 主图纸 PNG 的“属性后缀”，用于预览
+    preview_name = None
+    temp_key = "page"
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
         self._worker = None
-        self._files = []
+        self._gen_files = []
+        self._gen_prefix = ""
+        self._gen_sig = None
         self._outdir = settings.outdir
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 12)
-        root.setSpacing(10)
+        root.setContentsMargins(14, 12, 14, 10)
+        root.setSpacing(8)
 
         head = QVBoxLayout()
-        head.setSpacing(2)
+        head.setSpacing(1)
         t = QLabel(self.title)
         t.setObjectName("PageTitle")
         s = QLabel(self.subtitle)
@@ -63,87 +74,83 @@ class BasePage(QWidget):
 
         split = QSplitter(Qt.Horizontal)
         split.setChildrenCollapsible(False)
-        # 左：参数
         left = QScrollArea()
         left.setWidgetResizable(True)
         lw = QWidget()
         self.form = QVBoxLayout(lw)
         self.form.setContentsMargins(0, 0, 8, 0)
-        self.form.setSpacing(10)
+        self.form.setSpacing(8)
         left.setWidget(lw)
-        left.setMinimumWidth(360)
-        # 右：计算 + 预览
+        left.setMinimumWidth(560)
         right = QWidget()
         rv = QVBoxLayout(right)
         rv.setContentsMargins(0, 0, 0, 0)
-        rv.setSpacing(10)
+        rv.setSpacing(8)
         self.res_card = Card("计算摘要")
-        self.table = ResultTable()
+        self.table = GroupTable()
         self.res_card.add(self.table)
-        rv.addWidget(self.res_card, 2)
+        rv.addWidget(self.res_card, 3)
         self.prev_card = Card("图纸预览")
         self.preview = PreviewPane()
         self.prev_card.add(self.preview)
-        rv.addWidget(self.prev_card, 3)
+        rv.addWidget(self.prev_card, 2)
         split.addWidget(left)
         split.addWidget(right)
-        split.setStretchFactor(0, 4)
-        split.setStretchFactor(1, 5)
+        split.setStretchFactor(0, 5)
+        split.setStretchFactor(1, 6)
+        split.setSizes([620, 560])
         root.addWidget(split, 1)
 
-        # 底部：导出
-        exp = Card("导出")
+        exp = Card("生成 / 导出")
         g = QGridLayout()
-        g.setHorizontalSpacing(10)
-        g.setVerticalSpacing(4)
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(5)
         self.out_edit = QLineEdit(settings.outdir)
         browse = QPushButton("浏览…")
+        browse.setFixedWidth(64)
         browse.clicked.connect(self.on_browse)
-        out_box = QWidget()
-        oh = QHBoxLayout(out_box)
-        oh.setContentsMargins(0, 0, 0, 0)
-        oh.setSpacing(6)
-        oh.addWidget(self.out_edit, 1)
-        oh.addWidget(browse, 0)
         self.prefix_edit = QLineEdit(settings.prefix)
-        self.prefix_edit.setPlaceholderText("例：XG盖板 或 客户简称")
-        g.addWidget(self._lab("输出目录（全部文件写入此目录）"), 0, 0, 1, 2)
-        g.addWidget(self._lab("文件名前缀（每个文件自动加属性后缀）"), 0, 2)
-        g.addWidget(out_box, 1, 0, 1, 2)
-        g.addWidget(self.prefix_edit, 1, 2)
-        self.btn = QPushButton("生成并导出")
-        self.btn.setObjectName("Primary")
-        self.btn.clicked.connect(self.on_generate)
-        self.btn.setMinimumWidth(120)
-        g.addWidget(self.btn, 2, 2)
+        self.prefix_edit.setPlaceholderText("例：XG盖板")
+        self.prefix_edit.setFixedWidth(170)
+        g.addWidget(self._lab("输出目录"), 0, 0)
+        g.addWidget(self.out_edit, 0, 1)
+        g.addWidget(browse, 0, 2)
+        g.addWidget(self._lab("文件名前缀"), 0, 3)
+        g.addWidget(self.prefix_edit, 0, 4)
+        self.btn_gen = QPushButton("① 生成")
+        self.btn_gen.setObjectName("Primary")
+        self.btn_gen.setFixedWidth(120)
+        self.btn_gen.clicked.connect(self.on_generate)
+        self.btn_exp = QPushButton("② 导出")
+        self.btn_exp.setFixedWidth(120)
+        self.btn_exp.clicked.connect(self.on_export)
+        self.btn_exp.setEnabled(False)
+        g.addWidget(self.btn_gen, 1, 0)
+        g.addWidget(self.btn_exp, 1, 1)
         self.busy = BusyBar()
-        g.addWidget(self.busy, 2, 0, 1, 2)
-        g.setColumnStretch(0, 1)
-        g.setColumnStretch(1, 1)
-        exp.body().addLayout(g)
-
-        frow = QHBoxLayout()
-        frow.setSpacing(8)
+        g.addWidget(self.busy, 1, 2, 1, 3)
         self.file_list = FileList()
-        self.file_list.setFixedHeight(92)
-        frow.addWidget(self.file_list, 1)
-        btns = QVBoxLayout()
-        btns.setSpacing(6)
-        b_open_dir = QPushButton("打开目录")
-        b_open_dir.clicked.connect(lambda: open_path(self._outdir))
-        b_open_dwg = QPushButton("打开图纸")
-        b_open_dwg.clicked.connect(self.on_open_main)
-        btns.addWidget(b_open_dir)
-        btns.addWidget(b_open_dwg)
-        btns.addStretch(1)
-        frow.addLayout(btns)
-        exp.body().addLayout(frow)
+        self.file_list.setFixedHeight(66)
+        g.addWidget(self.file_list, 2, 0, 1, 4)
+        b1 = QPushButton("打开图纸")
+        b1.clicked.connect(self.on_open_main)
+        b2 = QPushButton("打开目录")
+        b2.clicked.connect(lambda: open_path(self._outdir))
+        side = QVBoxLayout()
+        side.setSpacing(4)
+        side.addWidget(b1)
+        side.addWidget(b2)
+        g.addLayout(side, 2, 4)
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(2, 0)
+        exp.body().addLayout(g)
         root.addWidget(exp, 0)
 
         self.build_form()
         self.refresh()
+        self._sync_export_hint()
 
-    # ---------------- 工具 ----------------
+    # ---------------- 基础 ----------------
     @staticmethod
     def _lab(text):
         lab = QLabel(text)
@@ -155,51 +162,100 @@ class BasePage(QWidget):
         self.form.addWidget(c)
         return c
 
-    def stretch(self):
-        self.form.addStretch(1)
+    def scale_field(self, on_change=None):
+        self.f_scale = ScaleField(on_change=on_change or self._touched)
+        return self.f_scale
 
-    # ---------------- 子类接口 ----------------
+    def _touched(self, *_):
+        self.refresh()
+        self._sync_export_hint()
+
     def build_form(self):
         raise NotImplementedError
 
     def refresh(self):
-        """即时计算（子类实现）。"""
-
-    def generate(self):
         raise NotImplementedError
 
-    # ---------------- 交互 ----------------
+    def sig(self):
+        raise NotImplementedError
+
+    def generate(self, outdir, prefix):
+        raise NotImplementedError
+
+    # ---------------- 导出流程 ----------------
+    def _tmpdir(self):
+        d = os.path.join(TMP_ROOT, self.temp_key)
+        shutil.rmtree(d, ignore_errors=True)
+        os.makedirs(d, exist_ok=True)
+        return d
+
     def on_browse(self):
-        d = QFileDialog.getExistingDirectory(self, "选择输出目录", self.out_edit.text() or
-                                             os.path.expanduser("~"))
+        d = QFileDialog.getExistingDirectory(self, "选择输出目录",
+                                             self.out_edit.text() or os.path.expanduser("~"))
         if d:
             self.out_edit.setText(d)
 
     def on_open_main(self):
-        if not self._files:
+        files = self._gen_files
+        if not files:
             self.busy.info("尚未生成文件")
             return
-        main = None
-        if self.preview_name:
-            for f in self._files:
-                if f.endswith(self.preview_name + ".pdf"):
-                    main = f
-                    break
-        if main is None:
-            for f in self._files:
-                if f.endswith(".pdf"):
-                    main = f
-                    break
-        if main is None:
-            for f in self._files:
-                if f.endswith(".png"):
-                    main = f
-                    break
-        if not open_path(main or self._files[0]):
+        pick = None
+        for f in files:
+            if f.endswith(".pdf") and (self.preview_name is None or self.preview_name in f):
+                pick = f
+                break
+        if pick is None:
+            pick = next((f for f in files if f.endswith(".pdf")), None) or files[0]
+        if not open_path(pick):
             self.busy.err("文件不存在（可能已被移动）")
 
     def on_generate(self):
         if self._worker is not None and self._worker.isRunning():
+            return
+        self.btn_gen.setEnabled(False)
+        self.btn_exp.setEnabled(False)
+        self.busy.busy("正在生成图纸与模型…（含三维建模，约数秒）")
+        tmp = self._tmpdir()
+        sig = self.sig()
+        prefix = "gen"
+        self._worker = GenWorker(lambda: self.generate(tmp, prefix), self)
+        self._worker.done.connect(lambda r, s=sig, p=prefix: self._on_generated(r, s, p))
+        self._worker.fail.connect(self.on_fail)
+        self._worker.start()
+
+    def _on_generated(self, result, sig, prefix):
+        self.btn_gen.setEnabled(True)
+        self._gen_files = list(result.files)
+        self._gen_prefix = prefix
+        self._gen_sig = sig
+        self.file_list.set_files(self._gen_files)
+        self.busy.ok(f"已生成 {len(self._gen_files)} 个文件（临时目录）；点「② 导出」写入目标目录")
+        if getattr(result, "rows", None):
+            self._render_rows(result.rows)
+        png = None
+        for f in self._gen_files:
+            if f.endswith(".png") and (self.preview_name is None or self.preview_name in f):
+                png = f
+                break
+        if png is None:
+            png = next((f for f in self._gen_files if f.endswith(".png")), None)
+        self.preview.show_image(png)
+        self._sync_export_hint()
+
+    def _sync_export_hint(self):
+        if self._gen_sig is None:
+            self.btn_exp.setEnabled(False)
+            return
+        if self._gen_sig != self.sig():
+            self.btn_exp.setEnabled(False)
+            self.busy.info("参数已修改：请重新「① 生成」后再导出")
+        else:
+            self.btn_exp.setEnabled(True)
+
+    def on_export(self):
+        if not self._gen_files:
+            self.busy.err("请先「① 生成」")
             return
         outdir = self.out_edit.text().strip()
         if not outdir:
@@ -210,390 +266,422 @@ class BasePage(QWidget):
         except OSError as e:
             self.busy.err(f"目录不可用：{e}")
             return
+        prefix = self.prefix_edit.text().strip()
+        pre = (prefix + "_") if prefix else ""
+        gpre = self._gen_prefix or ""
+        done, errs = [], []
+        for f in self._gen_files:
+            base = os.path.basename(f)
+            # 生成期前缀归一：gen-V1_xxx → 用户前缀-V1_xxx；gen_xxx → 用户前缀_xxx
+            if gpre and base.startswith(gpre + "-"):
+                tail = base[len(gpre) + 1:]
+                ver, _, rest = tail.partition("_")
+                base = f"{prefix}-{ver}_{rest}" if prefix else f"{ver}_{rest}"
+            elif gpre and base.startswith(gpre + "_"):
+                base = pre + base[len(gpre) + 1:]
+            else:
+                base = pre + base
+            dst = os.path.join(outdir, base)
+            try:
+                shutil.copy2(f, dst)
+                done.append(dst)
+            except OSError as e:
+                errs.append(f"{base}: {e}")
         self._outdir = outdir
-        self.btn.setEnabled(False)
-        self.busy.busy("正在生成图纸与模型…（含 OCC 建模，约数秒）")
-        self._worker = GenWorker(self.generate, self)
-        self._worker.done.connect(self.on_done)
-        self._worker.fail.connect(self.on_fail)
-        self._worker.start()
-
-    def on_done(self, result):
-        self.btn.setEnabled(True)
-        files = result.files if hasattr(result, "files") else list(result)
-        self._files = files
-        self.file_list.set_files(files)
-        names = [os.path.basename(f) for f in files]
-        self.busy.ok(f"已生成 {len(files)} 个文件到 {self._outdir}")
-        if hasattr(result, "rows") and result.rows:
-            self.table.set_rows(result.rows)
-        png = None
-        for f in files:
-            if f.endswith(".png") and (self.preview_name is None or self.preview_name in f):
-                png = f
-                break
-        if png is None:
-            for f in files:
-                if f.endswith(".png"):
-                    png = f
-                    break
-        self.preview.show_image(png)
-        self.after_done(result)
+        self.file_list.set_files(done)
+        if errs:
+            self.busy.err(f"导出 {len(done)} 个，失败 {len(errs)} 个：{errs[0]}")
+        else:
+            self.busy.ok(f"已导出 {len(done)} 个文件到 {outdir}")
         if self.settings.open_after:
-            open_path(self._outdir)
-
-    def after_done(self, result):
-        """子类可选：生成后补齐界面状态。"""
+            open_path(outdir)
 
     def on_fail(self, msg):
-        self.btn.setEnabled(True)
+        self.btn_gen.setEnabled(True)
+        self.btn_exp.setEnabled(False)
         self.busy.err(f"生成失败：{msg}")
         traceback.print_exc()
 
-    def prefix(self):
-        return self.prefix_edit.text().strip() or self.settings.prefix
-
     def frame(self):
         return self.settings.frame()
+
+    def _render_rows(self, rows):
+        self.table.set_rows(rows)
 
 
 # ================================================================ 片材
 class SheetPage(BasePage):
     title = "片材"
-    subtitle = "输入长 / 宽 / 厚，输出第一角三视图 + 等轴测图 + 1:1 DXF 轮廓 + STEP/STL 数模 + 参数表（A3 图框）。"
+    subtitle = "输入长 / 宽 / 厚 → 第一角三视图 + 等轴测图 + 1:1 DXF 轮廓 + STEP/STL 数模 + 参数表（A3 图框）。"
     preview_name = "图纸-三视图+轴测图_A3"
+    temp_key = "sheet"
 
     def build_form(self):
         c = self.card("尺寸")
-        g = TwoColForm()
-        self.f_name = text_field("名称", "片材", on_change=self.refresh)
-        self.f_mat = text_field("材料（可空）", "", placeholder="EPE / EVA / 蜂窝纸板", on_change=self.refresh)
-        g.add(self.f_name, 0)
-        g.add(self.f_mat, 1)
-        g.next_row()
-        self.f_L = num_field("长 L", 400.0, 1, 20000, 10, 1, on_change=self.refresh)
-        self.f_W = num_field("宽 W", 300.0, 1, 20000, 10, 1, on_change=self.refresh)
-        g.add(self.f_L, 0)
-        g.add(self.f_W, 1)
-        g.next_row()
-        self.f_H = num_field("厚 T", 15.0, 0.5, 500, 1, 1, on_change=self.refresh)
-        g.add(self.f_H, 0)
+        g = RowGrid(2)
+        self.f_name = text_field("名称", "片材", on_change=self._touched)
+        self.f_mat = text_field("材料", "", placeholder="EPE / EVA / 蜂窝纸板", on_change=self._touched)
+        g.add(self.f_name)
+        g.add(self.f_mat)
+        self.f_L = num_field("长 L（mm）", 400.0, 1, 20000, 10, 1, on_change=self._touched)
+        self.f_W = num_field("宽 W（mm）", 300.0, 1, 20000, 10, 1, on_change=self._touched)
+        self.f_H = num_field("厚 T（mm）", 15.0, 0.5, 500, 1, 1, on_change=self._touched)
+        g.add(self.f_L)
+        g.add(self.f_W)
+        g.add(self.f_H)
         c.add(g)
-        info = QLabel("说明：薄板按 1:1 轮廓出图；比例与图幅自动选择，单位 mm。")
-        info.setObjectName("FieldHint")
-        info.setWordWrap(True)
-        c.add(info)
-        self.stretch()
+        c2 = self.card("图纸比例")
+        g2 = RowGrid(1)
+        g2.add(self.scale_field())
+        c2.add(g2)
+        hint = QLabel("自动 = 按图幅可用区选最大可容纳档（含放大档 2:1 / 5:1）；手动填的数画不下时只提示不阻断。")
+        hint.setObjectName("FieldHint")
+        hint.setWordWrap(True)
+        c2.add(hint)
+        self.form.addStretch(1)
+
+    def _p(self):
+        from sheet_core import Params
+        return Params(L=self.f_L.widget.value(), W=self.f_W.widget.value(),
+                      H=self.f_H.widget.value(), name=self.f_name.widget.text() or "片材",
+                      material=self.f_mat.widget.text())
 
     def refresh(self):
         try:
-            from sheet_core import Params, report
-            p = Params(L=self.f_L.widget.value(), W=self.f_W.widget.value(), H=self.f_H.widget.value(),
-                       name=self.f_name.widget.text() or "片材", material=self.f_mat.widget.text())
+            from sheet_core import report
+            p = self._p()
             errs, rows = report(p)
-            self.table.set_rows(rows)
-            self.btn.setEnabled(not errs)
+            self.table.set_groups([("尺寸与用量", rows)])
+            self.btn_gen.setEnabled(not errs)
             self.busy.info("；".join(errs) if errs else "参数就绪")
         except (Exception, SystemExit) as e:
             self.table.set_rows([("参数错误", str(e))])
-            self.btn.setEnabled(False)
+            self.btn_gen.setEnabled(False)
 
-    def generate(self):
-        return backend.run_sheet(self.f_L.widget.value(), self.f_W.widget.value(),
-                                 self.f_H.widget.value(), self._outdir, prefix=self.prefix(),
-                                 name=self.f_name.widget.text() or "片材",
-                                 material=self.f_mat.widget.text(), frame=self.frame())
+    def sig(self):
+        p = self._p()
+        return (p.L, p.W, p.H, p.name, p.material, self.f_scale.value())
+
+    def generate(self, outdir, prefix):
+        p = self._p()
+        return backend.run_sheet(p.L, p.W, p.H, outdir, prefix=prefix, name=p.name,
+                                 material=p.material, frame=self.frame(),
+                                 scale=self.f_scale.value())
 
 
 # ================================================================ 仿形垫块
 class BlockPage(BasePage):
     title = "仿形垫块"
-    subtitle = "输入垫块外形、槽尺寸与间距；边距可两端均分或指定一侧，另一侧自动。输出三视图 + 轴测图 + DXF + STEP/STL + 参数表。"
+    subtitle = "垫块外形 + 槽 + 间距；边距可均分或指定一侧（另一侧自动）→ 三视图 + 轴测图 + DXF + STEP/STL + 参数表。"
     preview_name = "图纸-三视图+轴测图_A3"
+    temp_key = "block"
 
     def build_form(self):
         c = self.card("垫块与开槽")
-        g = TwoColForm()
-        self.f_L = num_field("垫块长 L", 1000.0, 10, 20000, 10, 1, on_change=self.refresh)
-        self.f_W = num_field("垫块宽 W", 100.0, 5, 5000, 5, 1, on_change=self.refresh)
-        g.add(self.f_L, 0)
-        g.add(self.f_W, 1)
-        g.next_row()
-        self.f_H = num_field("垫块高 H", 100.0, 5, 2000, 5, 1, on_change=self.refresh)
-        self.f_gap = num_field("槽间距", 40.0, 0, 2000, 5, 1, on_change=self.refresh)
-        g.add(self.f_H, 0)
-        g.add(self.f_gap, 1)
-        g.next_row()
-        self.f_sl = num_field("槽长（沿块长）", 50.0, 1, 20000, 5, 1, on_change=self.refresh)
-        self.f_sw = num_field("槽宽（沿块宽）", 70.0, 1, 5000, 5, 1, on_change=self.refresh)
-        g.add(self.f_sl, 0)
-        g.add(self.f_sw, 1)
-        g.next_row()
-        self.f_sh = num_field("槽深（自顶面）", 50.0, 1, 2000, 5, 1, on_change=self.refresh)
+        g = RowGrid(2)
+        self.f_L = num_field("垫块长 L（mm）", 1000.0, 10, 20000, 10, 1, on_change=self._touched)
+        self.f_W = num_field("垫块宽 W（mm）", 100.0, 5, 5000, 5, 1, on_change=self._touched)
+        self.f_H = num_field("垫块高 H（mm）", 100.0, 5, 2000, 5, 1, on_change=self._touched)
+        self.f_gap = num_field("槽间距（mm）", 40.0, 0, 2000, 5, 1, on_change=self._touched)
+        self.f_sl = num_field("槽长（mm）", 50.0, 1, 20000, 5, 1, on_change=self._touched)
+        self.f_sw = num_field("槽宽（mm）", 70.0, 1, 5000, 5, 1, on_change=self._touched)
+        self.f_sh = num_field("槽深（mm）", 50.0, 1, 2000, 5, 1, on_change=self._touched)
+        for r in (self.f_L, self.f_W, self.f_H, self.f_gap, self.f_sl, self.f_sw, self.f_sh):
+            g.add(r)
         c.add(g)
 
         c2 = self.card("边距与开口")
-        g2 = TwoColForm()
-        self.f_margin_mode = choice_field("边距方式", [("even", "两端均分（左=右）"), ("left", "指定左侧，右侧自动")],
-                                          "even", on_change=self.refresh)
-        g2.add_wide(self.f_margin_mode)
-        self.f_ml = num_field("左端边距", 20.0, 0, 5000, 5, 1,
-                              hint="仅在「指定左侧」时生效", on_change=self.refresh)
-        g2.add(self.f_ml, 0)
-        self.f_side = choice_field("单边贯穿开口侧", [("front", "前侧（长-宽 视图下方）"), ("back", "后侧")],
-                                   "front", on_change=self.refresh)
-        g2.add(self.f_side, 1)
+        g2 = RowGrid(2)
+        self.f_mm = seg_field("边距方式", [("even", "两端均分"), ("left", "指定左侧")],
+                              "even", on_change=self._touched)
+        self.f_ml = num_field("左端边距（mm）", 20.0, 0, 5000, 5, 1, on_change=self._touched,
+                              hint="仅「指定左侧」时生效")
+        self.f_side = seg_field("单边贯穿开口", [("front", "前侧"), ("back", "后侧")],
+                                "front", on_change=self._touched)
+        g2.add(self.f_mm)
+        g2.add(self.f_ml)
+        g2.add(self.f_side)
         c2.add(g2)
-        self.f_name = text_field("名称", "仿形块", on_change=self.refresh)
-        self.f_mat = text_field("材料（可空）", "", placeholder="EPE / EVA 等", on_change=self.refresh)
-        c2.add(self.f_name)
-        c2.add(self.f_mat)
-        hint = QLabel("槽宽 = 垫块宽 → 全贯穿；否则单边贯穿（默认前侧），对侧保留墙厚。")
-        hint.setObjectName("FieldHint")
-        hint.setWordWrap(True)
-        c2.add(hint)
-        self.stretch()
+        c3 = self.card("标识")
+        g3 = RowGrid(2)
+        self.f_name = text_field("名称", "仿形块", on_change=self._touched)
+        self.f_mat = text_field("材料", "", placeholder="EPE / EVA", on_change=self._touched)
+        g3.add(self.f_name)
+        g3.add(self.f_mat)
+        c3.add(g3)
+        c4 = self.card("图纸比例")
+        g4 = RowGrid(1)
+        g4.add(self.scale_field())
+        c4.add(g4)
+        self.form.addStretch(1)
+
+    def _p(self):
+        from block_core import Params
+        mode = self.f_mm.seg.value()
+        return Params(L=self.f_L.widget.value(), W=self.f_W.widget.value(),
+                      H=self.f_H.widget.value(), sl=self.f_sl.widget.value(),
+                      sw=self.f_sw.widget.value(), sh=self.f_sh.widget.value(),
+                      gap=self.f_gap.widget.value(),
+                      margin_left=(self.f_ml.widget.value() if mode == "left" else None),
+                      open_side=self.f_side.seg.value(),
+                      name=self.f_name.widget.text() or "仿形块",
+                      material=self.f_mat.widget.text())
+
+    def _touched(self, *_):
+        self.f_ml.widget.setEnabled(self.f_mm.seg.value() == "left")
+        super()._touched()
 
     def refresh(self):
         try:
-            from block_core import Params, report
-            mode = self.f_margin_mode.widget.currentData()
-            ml = self.f_ml.widget.value() if mode == "left" else None
-            p = Params(L=self.f_L.widget.value(), W=self.f_W.widget.value(), H=self.f_H.widget.value(),
-                       sl=self.f_sl.widget.value(), sw=self.f_sw.widget.value(),
-                       sh=self.f_sh.widget.value(), gap=self.f_gap.widget.value(),
-                       margin_left=ml, open_side=self.f_side.widget.currentData(),
-                       name=self.f_name.widget.text() or "仿形块", material=self.f_mat.widget.text())
+            from block_core import report
+            p = self._p()
             errs, rows, d = report(p)
-            self.table.set_rows(rows)
-            self.f_ml.widget.setEnabled(mode == "left")
-            self.btn.setEnabled(not errs)
+            self.table.set_groups([("开槽与边距", rows)])
+            self.btn_gen.setEnabled(not errs)
             self.busy.info("；".join(errs) if errs else "参数就绪")
         except (Exception, SystemExit) as e:
             self.table.set_rows([("参数错误", str(e))])
-            self.btn.setEnabled(False)
+            self.btn_gen.setEnabled(False)
 
-    def generate(self):
-        mode = self.f_margin_mode.widget.currentData()
-        return backend.run_block(self.f_L.widget.value(), self.f_W.widget.value(),
-                                 self.f_H.widget.value(), self.f_sl.widget.value(),
-                                 self.f_sw.widget.value(), self.f_sh.widget.value(),
-                                 self.f_gap.widget.value(), self._outdir, prefix=self.prefix(),
-                                 margin_left=(self.f_ml.widget.value() if mode == "left" else None),
-                                 open_side=self.f_side.widget.currentData(),
-                                 name=self.f_name.widget.text() or "仿形块",
-                                 material=self.f_mat.widget.text(), frame=self.frame())
+    def sig(self):
+        p = self._p()
+        return (p.L, p.W, p.H, p.sl, p.sw, p.sh, p.gap, p.margin_left, p.open_side,
+                p.name, p.material, self.f_scale.value())
+
+    def generate(self, outdir, prefix):
+        p = self._p()
+        return backend.run_block(p.L, p.W, p.H, p.sl, p.sw, p.sh, p.gap, outdir,
+                                 prefix=prefix, margin_left=p.margin_left,
+                                 open_side=p.open_side, name=p.name, material=p.material,
+                                 frame=self.frame(), scale=self.f_scale.value())
 
 
 # ================================================================ 网格刀卡
 class GridPage(BasePage):
     title = "网格刀卡"
-    subtitle = "输入内衬外尺寸（= 容器内尺寸）、每格尺寸与刀卡厚度；自动算出两种排布（V1 长对长 / V2 长对宽）的格数、层数、收容数与刀卡片数，可只导一种或两种都导。"
+    subtitle = ("内衬外尺寸（= 容器内尺寸）+ 每格尺寸 + 纸板 → 自动对比 V1 长对长 / V2 长对宽"
+                "（格数·层数·收容数·刀卡片数）→ 图纸 + 1:1 DXF + STEP/STL + 参数表 + 报价。")
     preview_name = "图纸-网格俯视+刀卡侧视+轴测图_A3"
+    temp_key = "grid"
 
     def build_form(self):
         c = self.card("容器与格子")
-        g = TwoColForm()
-        self.f_L = num_field("内衬外长（容器内长）", 580.0, 20, 20000, 10, 1, on_change=self.refresh)
-        self.f_W = num_field("内衬外宽（容器内宽）", 380.0, 20, 20000, 10, 1, on_change=self.refresh)
-        g.add(self.f_L, 0)
-        g.add(self.f_W, 1)
+        g = RowGrid(2)
+        self.f_L = num_field("内衬外长（mm）", 580.0, 20, 20000, 10, 1, on_change=self._touched)
+        self.f_W = num_field("内衬外宽（mm）", 380.0, 20, 20000, 10, 1, on_change=self._touched)
+        self.f_H = num_field("内衬高（mm）", 380.0, 20, 20000, 10, 1, on_change=self._touched)
+        self.f_pl = num_field("每格长（mm）", 65.0, 1, 5000, 1, 1, on_change=self._touched)
+        self.f_pw = num_field("每格宽（mm）", 38.0, 1, 5000, 1, 1, on_change=self._touched)
+        self.f_ph = num_field("每格高（mm）", 85.0, 1, 5000, 5, 1, on_change=self._touched)
+        for r in (self.f_L, self.f_W, self.f_H):
+            g.add(r)
         g.next_row()
-        self.f_H = num_field("内衬高（容器内高）", 380.0, 20, 20000, 10, 1, on_change=self.refresh)
+        for r in (self.f_pl, self.f_pw, self.f_ph):
+            g.add(r)
         c.add(g)
-        g2 = TwoColForm()
-        self.f_pl = num_field("每格长（产品+缓冲）", 65.0, 1, 5000, 1, 1, on_change=self.refresh)
-        self.f_pw = num_field("每格宽（产品+缓冲）", 38.0, 1, 5000, 1, 1, on_change=self.refresh)
-        g2.add(self.f_pl, 0)
-        g2.add(self.f_pw, 1)
-        g2.next_row()
-        self.f_ph = num_field("每格高（产品+缓冲）", 85.0, 1, 5000, 5, 1, on_change=self.refresh)
-        c.add(g2)
 
-        c3 = self.card("纸板与隔板")
-        g3 = TwoColForm()
-        self.f_t = num_field("刀卡厚度 t", 5.0, 1, 20, 0.5, 1, on_change=self.refresh)
-        self.f_slot = num_field("开槽宽度", 7.0, 1, 30, 0.5, 1, on_change=self.refresh)
-        g3.add(self.f_t, 0)
-        g3.add(self.f_slot, 1)
-        g3.next_row()
-        self.f_sep = num_field("隔板厚度", 5.0, 1, 30, 0.5, 1,
-                               hint="0 或与刀卡同厚时按同厚计", on_change=self.refresh)
-        self.f_pads = choice_field("顶 / 底隔板", [("both", "底部 + 顶部"), ("bottom", "仅底部"),
-                                                   ("top", "仅顶部"), ("none", "无（层间隔板恒有）")],
-                                  "both", on_change=self.refresh)
-        g3.add(self.f_sep, 0)
-        g3.add(self.f_pads, 1)
+        c2 = self.card("纸板与隔板")
+        g2 = RowGrid(2)
+        self.f_t = num_field("刀卡厚（mm）", 5.0, 1, 20, 0.5, 1, on_change=self._touched)
+        self.f_slot = num_field("开槽宽（mm）", 7.0, 1, 30, 0.5, 1, on_change=self._touched)
+        self.f_sep = num_field("隔板厚（mm）", 5.0, 1, 30, 0.5, 1, on_change=self._touched)
+        self.f_pads = seg_field("顶/底隔板", [("both", "底+顶"), ("bottom", "仅底"),
+                                             ("top", "仅顶"), ("none", "无")], "both",
+                                on_change=self._touched)
+        g2.add(self.f_t)
+        g2.add(self.f_slot)
+        g2.add(self.f_sep)
+        g2.add(self.f_pads)
+        c2.add(g2)
+
+        c3 = self.card("做法与报价")
+        g3 = RowGrid(2)
+        self.f_ver = seg_field("导出方案", [("1", "V1 长对长"), ("2", "V2 长对宽"), ("12", "两个都要")],
+                               "12", on_change=self._touched, label_w=84)
+        self.f_mat = flute_field("纸板材料", flute_options(), "BC", on_change=self._touched)
+        self.f_allow = num_field("边料余量 A（mm）", 15.0, 0, 100, 1, 1, on_change=self._touched,
+                                 hint="飞书口径：面积 =(长+A)(宽+A)×张数")
+        self.f_labor = num_field("人工费/套（元）", 0.29, 0, 9999, 0.1, 2,
+                                 on_change=self._touched)
+        self.f_qty = num_field("套数（套）", 1.0, 1, 100000, 1, 0, on_change=self._touched)
+        g3.add(self.f_ver, span=True)
+        g3.add(self.f_mat, span=True)
+        for r in (self.f_allow, self.f_labor, self.f_qty):
+            g3.add(r)
         c3.add(g3)
-        self.slot_hint = QLabel("")
-        self.slot_hint.setObjectName("FieldHint")
-        self.slot_hint.setWordWrap(True)
-        c3.add(self.slot_hint)
 
-        c4 = self.card("导出方案（可多选）")
-        self.chk1 = check_field("V1 长对长（内衬长向 = 产品长）", True, on_change=self.refresh)
-        self.chk2 = check_field("V2 长对宽（内衬长向 = 产品宽）", True, on_change=self.refresh)
-        c4.add(self.chk1)
-        c4.add(self.chk2)
-        note = QLabel("两种都导出时，文件名自动带 -V1 / -V2 后缀区分。")
-        note.setObjectName("FieldHint")
-        note.setWordWrap(True)
-        c4.add(note)
-
-        c5 = self.card("方案对比")
-        self.cmp = ResultTable()
-        self.cmp.setMinimumHeight(150)
-        c5.add(self.cmp)
-        self.stretch()
+        c4 = self.card("图纸比例")
+        g4 = RowGrid(1)
+        g4.add(self.scale_field())
+        c4.add(g4)
+        self.form.addStretch(1)
 
     def _args(self):
         return dict(container=(self.f_L.widget.value(), self.f_W.widget.value(), self.f_H.widget.value()),
                     cell=(self.f_pl.widget.value(), self.f_pw.widget.value(), self.f_ph.widget.value()),
                     t=self.f_t.widget.value(), slot_w=self.f_slot.widget.value(),
-                    sep_t=self.f_sep.widget.value(), pads=self.f_pads.widget.currentData())
+                    sep_t=self.f_sep.widget.value(), pads=self.f_pads.seg.value())
+
+    def _price(self):
+        return dict(code=self.f_mat.flute.value(), allow=self.f_allow.widget.value(),
+                    labor=self.f_labor.widget.value(), qty=self.f_qty.widget.value())
 
     def refresh(self):
         a = self._args()
         t = a["t"]
         ok_slot = a["slot_w"] >= t - 1e-9
-        self.slot_hint.setText(
-            f"开槽宽须 ≥ 刀卡厚 t={t:g} mm（当前 {a['slot_w']:g} mm）："
-            + ("可以装配，单边间隙 %.1f mm" % (a["slot_w"] - t) if ok_slot else "会干涉，请加大开槽宽"))
         plans = {}
         for v in (1, 2):
             try:
-                p, rows, d = backend.grid_plan(**a, version=v)
-                plans[v] = (rows, d, None)
+                p, rows, d = backend.grid_plan(**a, version=v, price=self._price())
+                plans[v] = (p, rows, d, None)
             except (Exception, SystemExit) as e:
-                plans[v] = (None, None, str(e))
+                plans[v] = (None, None, None, str(e))
+        groups = []
+        if plans[1][1]:
+            groups.append(("V1 长对长 · 明细", plans[1][1]))
         cmp_rows = []
         for v in (1, 2):
-            rows, d, err = plans[v]
+            _p, _rows, d, err = plans[v]
             tag = "V1 长对长" if v == 1 else "V2 长对宽"
-            if rows is None:
-                cmp_rows += [(f"{tag} · 状态", err)]
+            if d is None:
+                cmp_rows.append((tag, err))
                 continue
-            cmp_rows += [(f"{tag} · 格数（长×短）", f"{d['n_l']} × {d['n_w']}"),
+            cmp_rows += [(f"{tag} · 格数 长×短", f"{d['n_l']} × {d['n_w']}"),
                          (f"{tag} · 层数 / 收容数", f"{d['layers']} / {d['capacity']}"),
-                         (f"{tag} · 长刀卡（每层×层=总）",
-                          f"{d['cards_long']} × {d['layers']} = {d['cards_long_total']}"),
-                         (f"{tag} · 短刀卡（每层×层=总）",
-                          f"{d['cards_short']} × {d['layers']} = {d['cards_short_total']}"),
-                         (f"{tag} · 边距（长/短）", f"{d['margin_l']:g} / {d['margin_w']:g}"),
-                         (f"{tag} · 堆叠高 ≤ 内高", f"{d['H_stack']:g} ≤ {a['container'][2]:g}")]
-        self.cmp.set_rows(cmp_rows)
-        # 主结果表显示选中的第一个方案明细
-        rows1 = plans[1][0]
-        self.table.set_rows(rows1 if rows1 else [("提示", "参数不满足：见下方方案对比")])
-        errs = [plans[1][2], plans[2][2]]
-        self.btn.setEnabled(ok_slot and any(r is None for r in errs))
+                         (f"{tag} · 长刀卡/层", f"{d['cards_long']} 张（总 {d['cards_long_total']}）"),
+                         (f"{tag} · 短刀卡/层", f"{d['cards_short']} 张（总 {d['cards_short_total']}）"),
+                         (f"{tag} · 边距 长/短", f"{d['margin_l']:g} / {d['margin_w']:g}"),
+                         (f"{tag} · 堆叠 ≤ 内高", f"{d['H_stack']:g} ≤ {a['container'][2]:g}")]
+            if d.get("price"):
+                cmp_rows.append((f"{tag} · 每套", f"¥ {d['price']['per_set']:.2f}"))
+        groups.append(("方案对比", cmp_rows))
+        errs = [plans[1][3], plans[2][3]]
+        groups.append(("校验", [("开槽宽 ≥ 刀卡厚",
+                                 f"{a['slot_w']:g} ≥ {t:g} {'✓' if ok_slot else '✗ 会干涉'}")] +
+                                ([("错误", e) for e in errs if e] or [("状态", "OK")])))
+        self.table.set_groups(groups)
+        self.btn_gen.setEnabled(ok_slot)
         self.busy.info("；".join(x for x in errs if x) if any(errs) else
                        ("参数就绪" if ok_slot else "开槽宽不足"))
 
-    def generate(self):
+    def sig(self):
         a = self._args()
-        both = self.chk1.widget.isChecked() and self.chk2.widget.isChecked()
+        return (a["container"], a["cell"], a["t"], a["slot_w"], a["sep_t"], a["pads"],
+                self.f_ver.seg.value(), self._price(), self.f_scale.value())
+
+    def generate(self, outdir, prefix):
+        a = self._args()
+        ver = self.f_ver.seg.value()
+        vers = [1, 2] if ver == "12" else [int(ver)]
         files, rows = [], []
-        for v, chk in ((1, self.chk1), (2, self.chk2)):
-            if not chk.widget.isChecked():
-                continue
-            pre = (self.prefix() + (f"-V{v}" if both else "")) if self.prefix() else (f"V{v}" if both else "")
-            r = backend.run_grid(a["container"], a["cell"], a["t"], self._outdir, prefix=pre,
+        for v in vers:
+            pre = f"{prefix}-V{v}" if len(vers) > 1 else prefix
+            r = backend.run_grid(a["container"], a["cell"], a["t"], outdir, prefix=pre,
                                  slot_w=a["slot_w"], sep_t=a["sep_t"], pads=a["pads"],
-                                 version=v, frame=self.frame())
+                                 version=v, frame=self.frame(), scale=self.f_scale.value(),
+                                 price=self._price())
             files += r.files
             rows = r.rows
         if not files:
             raise ValueError("未选择任何导出方案")
-        res = backend.Result(files, rows)
-        return res
+        return backend.Result(files, rows)
 
 
 # ================================================================ 瓦楞纸箱
 BOX_META = {
-    "0201": dict(label="FEFCO 0201 · 标准开槽箱（RSC，上下一片式）",
-                 parts=[("body", "纸板楞型")]),
-    "0310": dict(label="FEFCO 0310 · 围框 + 两盖（端对端双盖）",
-                 parts=[("sleeve", "围框楞型"), ("cap_top", "上盖楞型"), ("cap_bottom", "下盖楞型")]),
-    "0312": dict(label="FEFCO 0312 · 底箱 + 平顶天盖（罩盖）",
-                 parts=[("base", "底箱楞型"), ("lid", "天盖楞型")]),
+    "0201": dict(label="0201 开槽箱（RSC）", parts=[("body", "纸板楞型")]),
+    "0310": dict(label="0310 围框+两盖", parts=[("sleeve", "围框楞型"), ("cap_top", "上盖楞型"),
+                                              ("cap_bottom", "下盖楞型")]),
+    "0312": dict(label="0312 底箱+天盖", parts=[("base", "底箱楞型"), ("lid", "天盖楞型")]),
 }
+PARAM_DEFS = [("glue_w", "接舌宽"), ("flap_gain", "外摇盖加放"), ("flap_reduce", "内摇盖折减"),
+              ("slot_w", "开槽宽"), ("gap", "盖/围框间隙"), ("cover_depth", "天盖罩深")]
 
 
 class BoxPage(BasePage):
     title = "瓦楞纸箱"
-    subtitle = "选箱型与楞型，输入外尺寸或内尺寸；图框自动填内 / 制造 / 外三口径，其余参数按楞型取标准区间默认值（可改，超范围阻断）。"
+    subtitle = ("选箱型与楞型 → 填外尺寸或内尺寸；自动给内 / 制造 / 外三口径 + 展开尺寸 + 面积数量 + "
+                "报价（飞书口径，单价来自隔板表），工艺参数限标准区间。")
     preview_name = "图纸-展开图+轴测图_A3"
+    temp_key = "box"
 
     def build_form(self):
         c = self.card("箱型与尺寸")
-        g = TwoColForm()
-        self.f_box = choice_field("箱型", [(k, v["label"]) for k, v in BOX_META.items()],
-                                  "0201", on_change=self.on_box_changed)
-        g.add_wide(self.f_box)
-        self.f_mode = choice_field("尺寸输入口径", [("outer", "外尺寸（组装外形）"), ("inner", "内尺寸（内腔）")],
-                                   "outer", on_change=self.refresh)
-        g.add_wide(self.f_mode)
-        self.f_L = num_field("长 L", 400.0, 10, 20000, 10, 1, on_change=self.refresh)
-        self.f_W = num_field("宽 W", 300.0, 10, 20000, 10, 1, on_change=self.refresh)
-        self.f_H = num_field("高 H", 200.0, 10, 20000, 10, 1, on_change=self.refresh)
-        g.add(self.f_L, 0)
-        g.add(self.f_W, 1)
+        g = RowGrid(2)
+        self.f_box = seg_field("箱型", [(k, v["label"]) for k, v in BOX_META.items()],
+                               "0201", on_change=self.on_box_changed)
+        self.f_mode = seg_field("尺寸口径", [("outer", "外尺寸"), ("inner", "内尺寸")],
+                                "outer", on_change=self._touched)
+        self.f_L = num_field("长 L（mm）", 400.0, 10, 20000, 10, 1, on_change=self._touched)
+        self.f_W = num_field("宽 W（mm）", 300.0, 10, 20000, 10, 1, on_change=self._touched)
+        self.f_H = num_field("高 H（mm）", 200.0, 10, 20000, 10, 1, on_change=self._touched)
+        g.add(self.f_box, span=True)
+        g.add(self.f_mode, span=True)
+        g.add(self.f_L)
+        g.add(self.f_W)
+        g.add(self.f_H)
         g.next_row()
-        g.add(self.f_H, 0)
         c.add(g)
-        self.dim_note = QLabel("")
-        self.dim_note.setObjectName("FieldHint")
-        self.dim_note.setWordWrap(True)
-        c.add(self.dim_note)
 
-        c2 = self.card("楞型（材料来自飞书包材表 + GB/T 6544）")
-        g2 = TwoColForm()
+        c2 = self.card("楞型 / 材料（单选按钮；单价来自飞书「隔板」表）")
+        g2 = RowGrid(1)
         self.flute_rows = {}
         all_parts = []
-        for bx, m in BOX_META.items():
-            for key, label in m["parts"]:
+        for bx in BOX_META.values():
+            for key, label in bx["parts"]:
                 if key not in [k for k, _ in all_parts]:
                     all_parts.append((key, label))
         for key, label in all_parts:
-            r = choice_field(label, backend.flute_choices(), "BC", on_change=self.on_flute_changed)
+            r = flute_field(label, flute_options(), "BC", on_change=self.on_flute_changed)
             self.flute_rows[key] = r
-            g2.add_wide(r)
+            g2.add(r)
         c2.add(g2)
-        self.f_link_caps = check_field("上下盖同款同楞", True, on_change=self.on_flute_changed)
-        c2.add(self.f_link_caps)
-        hint = QLabel("不同楞型板厚不同：0310 围框外尺寸按较厚盖板计算，两盖展开图各出一张。")
-        hint.setObjectName("FieldHint")
-        hint.setWordWrap(True)
-        c2.add(hint)
+        self.f_link = check_field("上下盖同款同楞", True, on_change=self.on_flute_changed)
+        c2.add(self.f_link)
 
         c3 = self.card("工艺参数（标准区间内可改）")
-        g3 = TwoColForm()
+        g3 = RowGrid(2)
         self.p_rows = {}
-        for key, label in (("glue_w", "接舌宽"), ("flap_gain", "外摇盖加放"),
-                           ("flap_reduce", "内摇盖折减"), ("slot_w", "开槽宽"),
-                           ("gap", "盖 / 围框单边间隙"), ("cover_depth", "天盖罩深")):
-            r = num_field(label, 45.0, 0, 200, 1, 1, hint="", on_change=self.refresh)
+        for key, label in PARAM_DEFS:
+            r = num_field(label, 45.0, 0, 200, 1, 1, on_change=self._touched)
             self.p_rows[key] = r
-            g3.add(r, (len(self.p_rows) - 1) % 2)
-            if len(self.p_rows) % 2 == 0:
-                g3.next_row()
+            g3.add(r)
         c3.add(g3)
-        self.stretch()
+
+        c4 = self.card("报价（飞书口径：面积×单价+人工费）")
+        g4 = RowGrid(2)
+        self.f_allow_mode = seg_field("边料余量 A", [("auto", "按楞型默认"), ("manual", "手动")],
+                                      "auto", on_change=self.on_flute_changed)
+        self.f_allow = num_field("A 值（mm）", 20.0, 0, 100, 1, 1, on_change=self._touched)
+        self.f_labor = num_field("人工费/套（元）", 0.0, 0, 9999, 0.1, 2,
+                                 on_change=self._touched)
+        self.f_qty = num_field("套数（套）", 1.0, 1, 100000, 1, 0, on_change=self._touched)
+        g4.add(self.f_allow_mode)
+        g4.add(self.f_allow)
+        g4.add(self.f_labor)
+        g4.add(self.f_qty)
+        c4.add(g4)
+
+        c5 = self.card("图纸比例")
+        g5 = RowGrid(1)
+        g5.add(self.scale_field())
+        c5.add(g5)
+        self.form.addStretch(1)
         self.on_box_changed()
 
-    # ---------------- 楞型 / 箱型联动 ----------------
+    # ---------------- 联动 ----------------
     def _box(self):
-        return self.f_box.widget.currentData()
+        return self.f_box.seg.value()
 
-    def on_box_changed(self):
+    def on_box_changed(self, *_):
         box = self._box()
-        parts = BOX_META[box]["parts"]
+        parts = [k for k, _ in BOX_META[box]["parts"]]
         for key, r in self.flute_rows.items():
-            r.setVisible(any(key == k for k, _ in parts))
-        self.f_link_caps.setVisible(box == "0310")
+            r.setVisible(key in parts)
+        self.f_link.setVisible(box == "0310")
         for key, r in self.p_rows.items():
-            if key in ("gap",):
+            if key == "gap":
                 r.setVisible(box in ("0310", "0312"))
             elif key == "cover_depth":
                 r.setVisible(box == "0312")
@@ -603,22 +691,23 @@ class BoxPage(BasePage):
                 r.setVisible(True)
         self._sync_params()
         self.refresh()
+        self._sync_export_hint()
 
-    def on_flute_changed(self):
+    def on_flute_changed(self, *_):
         self._sync_params()
         self.refresh()
+        self._sync_export_hint()
 
     def _flutes(self):
         box = self._box()
         out = {}
         for key, _ in BOX_META[box]["parts"]:
-            out[key] = self.flute_rows[key].widget.currentData()
-        if box == "0310" and self.f_link_caps.widget.isChecked():
+            out[key] = self.flute_rows[key].flute.value()
+        if box == "0310" and self.f_link.widget.isChecked():
             out["cap_bottom"] = out["cap_top"]
         return out
 
     def _sync_params(self):
-        """按各楞型默认值刷新工艺参数（保留用户已改动且仍在区间内的值）。"""
         box = self._box()
         fl = self._flutes()
         primary = "cap_top" if box == "0310" else ("lid" if box == "0312" else "body")
@@ -627,9 +716,8 @@ class BoxPage(BasePage):
         r = backend.ranges_of(code, box)
         for key, row in self.p_rows.items():
             if key == "cover_depth":
-                row.widget.setRange(10.0, 10000.0)
-                msg = "罩深（天盖墙高）；建议 ≈ 0.45×H，且 ≤ 底箱制造高"
-                row.set_hint(msg)
+                row.widget.setRange(10.0, max(20.0, self.f_H.widget.value()))
+                row.set_hint("罩深 = 天盖墙高；建议 ≈ 0.45×H，且 ≤ 底箱制造高")
                 continue
             if key not in d:
                 continue
@@ -641,51 +729,70 @@ class BoxPage(BasePage):
             if not (lo - 1e-9 <= cur <= hi + 1e-9):
                 row.widget.setValue(d[key])
             row.set_hint(f"标准区间 {lo:g}–{hi:g} mm（{r.get('src', 'GB/T 6543 + 行业实践')}）")
-        if box == "0312":
-            self.p_rows["cover_depth"].widget.setRange(10.0, max(20.0, self.f_H.widget.value()))
-        # 下盖楞型随上盖
-        if box == "0310" and self.f_link_caps.widget.isChecked():
-            cb = self.flute_rows["cap_bottom"].widget
-            i = cb.findData(self.flute_rows["cap_top"].widget.currentData())
-            if i >= 0:
-                cb.setCurrentIndex(i)
-            self.flute_rows["cap_bottom"].widget.setEnabled(False)
+        if self.f_allow_mode.seg.value() == "auto":
+            self.f_allow.widget.setValue(price_lib.allow_default(code))
+            self.f_allow.widget.setEnabled(False)
+        else:
+            self.f_allow.widget.setEnabled(True)
+        if box == "0310" and self.f_link.widget.isChecked():
+            cb = self.flute_rows["cap_bottom"].flute
+            cb.set_value(self.flute_rows["cap_top"].flute.value())
+            cb.setEnabled(False)
         elif box == "0310":
-            self.flute_rows["cap_bottom"].widget.setEnabled(True)
+            self.flute_rows["cap_bottom"].flute.setEnabled(True)
 
-    # ---------------- 即时计算 ----------------
-    def _args(self):
-        box = self._box()
-        fl = self._flutes()
-        params = {}
+    # ---------------- 计算 ----------------
+    def _params(self):
+        out = {}
         for key, row in self.p_rows.items():
             if row.isVisible():
-                params[key] = row.widget.value()
-        return dict(box=box, dims=(self.f_L.widget.value(), self.f_W.widget.value(), self.f_H.widget.value()),
-                    mode=self.f_mode.widget.currentData(), flutes=fl, params=params)
+                out[key] = row.widget.value()
+        return out
+
+    def _price(self):
+        allow = {}
+        if self.f_allow_mode.seg.value() == "manual":
+            v = self.f_allow.widget.value()
+            for k in ("body", "sleeve", "cap_top", "cap_bottom", "base", "lid"):
+                allow[k] = v
+        return dict(allow=allow or None, labor=self.f_labor.widget.value(),
+                    qty=self.f_qty.widget.value())
+
+    def _plan(self):
+        return backend.box_plan(self._box(),
+                                (self.f_L.widget.value(), self.f_W.widget.value(),
+                                 self.f_H.widget.value()),
+                                mode=self.f_mode.seg.value(), flutes=self._flutes(),
+                                params=self._params(), price=self._price())
 
     def refresh(self):
-        a = self._args()
         try:
-            plan = backend.box_plan(a["box"], a["dims"], mode=a["mode"], flutes=a["flutes"],
-                                    params=a["params"])
+            plan = self._plan()
         except (Exception, SystemExit) as e:
             self.table.set_rows([("参数错误", str(e))])
-            self.btn.setEnabled(False)
+            self.btn_gen.setEnabled(False)
             self.busy.err(str(e))
             return
-        rows = []
-        rows += [(f"口径（{ '外尺寸输入' if a['mode'] == 'outer' else '内尺寸输入'}）", "")]
-        rows += backend.box_dim_rows(a["box"], plan["p"])
-        rows += [("", "")]
-        rows += plan["rows"]
-        self.table.set_rows(rows)
-        self.btn.setEnabled(True)
-        self.dim_note.setText("尺寸链：内 = 外 − 2t（L/W/H 同口径）· 制造 = 外 − t；"
-                              "0310 围框高 = 外高 − 上盖 t − 下盖 t；0312 内高 = 外高 − 2×底箱 t。")
+        p = plan["p"]
+        box = self._box()
+        dims = [("口径", "外尺寸输入" if self.f_mode.seg.value() == "outer" else "内尺寸输入")]
+        dims += backend.box_dim_rows(box, p)
+        price_rows = [r for r in plan["rows"] if r[0].startswith("—") or "·" in r[0]]
+        price_keys = {r[0] for r in price_rows}
+        core_rows = [r for r in plan["rows"] if r[0] not in price_keys]
+        self.table.set_groups([("尺寸链", dims),
+                               ("展开与工艺", core_rows),
+                               ("报价（飞书口径）", price_rows)])
+        self.btn_gen.setEnabled(True)
         self.busy.info("参数就绪")
 
-    def generate(self):
-        a = self._args()
-        plan = backend.box_plan(a["box"], a["dims"], mode=a["mode"], flutes=a["flutes"], params=a["params"])
-        return backend.box_export(a["box"], plan, self._outdir, prefix=self.prefix(), frame=self.frame())
+    def sig(self):
+        return (self._box(),
+                (self.f_L.widget.value(), self.f_W.widget.value(), self.f_H.widget.value()),
+                self.f_mode.seg.value(), self._flutes(), self._params(), self._price(),
+                self.f_scale.value())
+
+    def generate(self, outdir, prefix):
+        plan = self._plan()
+        return backend.box_export(self._box(), plan, outdir, prefix=prefix,
+                                  frame=self.frame(), scale=self.f_scale.value())
