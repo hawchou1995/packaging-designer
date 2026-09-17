@@ -8,6 +8,7 @@
 import os
 import shutil
 import tempfile
+import time
 import traceback
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -215,7 +216,9 @@ class BasePage(QWidget):
             return
         self.btn_gen.setEnabled(False)
         self.btn_exp.setEnabled(False)
-        self.busy.busy("正在生成图纸与模型…（含三维建模，约数秒）")
+        self.btn_gen.setText("生成中…")
+        self._t_gen = time.time()
+        self.busy.busy("正在生成图纸与模型…（含三维建模；网格/纸箱首次约 10–30 秒）")
         tmp = self._tmpdir()
         sig = self.sig()
         prefix = "gen"
@@ -226,11 +229,14 @@ class BasePage(QWidget):
 
     def _on_generated(self, result, sig, prefix):
         self.btn_gen.setEnabled(True)
+        self.btn_gen.setText("① 生成")
+        el = time.time() - getattr(self, "_t_gen", time.time())
         self._gen_files = list(result.files)
         self._gen_prefix = prefix
         self._gen_sig = sig
         self.file_list.set_files(self._gen_files)
-        self.busy.ok(f"已生成 {len(self._gen_files)} 个文件（临时目录）；点「② 导出」写入目标目录")
+        self.busy.ok(f"生成完成（{el:.1f}s）：{len(self._gen_files)} 个文件在临时目录，"
+                     f"点「② 导出」写入目标目录")
         if getattr(result, "rows", None):
             self._render_rows(result.rows)
         png = None
@@ -298,6 +304,7 @@ class BasePage(QWidget):
 
     def on_fail(self, msg):
         self.btn_gen.setEnabled(True)
+        self.btn_gen.setText("① 生成")
         self.btn_exp.setEnabled(False)
         self.busy.err(f"生成失败：{msg}")
         traceback.print_exc()

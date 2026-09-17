@@ -1,0 +1,45 @@
+== guiprobe start 2026-09-17 19:08:18 ==
+frozen=False exe=D:\Tools\venvs\fefco0210\Scripts\python.exe
+sys.path head=['D:\\Tools\\tmp\\packapp\\core', 'D:\\Tools\\tmp\\packapp\\ui', 'D:\\Tools\\tmp\\packapp', 'D:\\Tools\\tmp\\packapp', 'C:\\Users\\Admin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python313.zip', 'C:\\Users\\Admin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\DLLs']
+
+--- 片材 (page 0) ---
+  刷新后：生成按钮=True 状态='参数就绪' 摘要行=7
+  on_generate() 返回，worker=运行中
+  生成完成 1.8s：文件 9 个；状态='生成完成（1.7s）：9 个文件在临时目录，点「② 导出」写入目标目录'
+     · gen_片材轮廓_1-1.dxf
+     · gen_图纸-三视图+轴测图_A3.pdf
+     · gen_图纸-三视图+轴测图_A3.png
+  导出后目录文件数=9；状态='已导出 9 个文件到 D:\\Tools\\tmp\\packapp\\guiprobe_out\\片材'
+  ✓ 通过
+
+--- 仿形垫块 (page 1) ---
+  刷新后：生成按钮=True 状态='参数就绪' 摘要行=9
+  on_generate() 返回，worker=运行中
+  生成完成 1.1s：文件 9 个；状态='生成完成（1.0s）：9 个文件在临时目录，点「② 导出」写入目标目录'
+     · gen_仿形块俯视_1-1.dxf
+     · gen_图纸-三视图+轴测图_A3.pdf
+     · gen_图纸-三视图+轴测图_A3.png
+  导出后目录文件数=9；状态='已导出 9 个文件到 D:\\Tools\\tmp\\packapp\\guiprobe_out\\仿形垫块'
+  ✓ 通过
+
+--- 网格刀卡 (page 2) ---
+  刷新后：生成按钮=True 状态='参数就绪' 摘要行=50
+  on_generate() 返回，worker=运行中
+  生成完成 23.3s：文件 18 个；状态='生成完成（23.3s）：18 个文件在临时目录，点「② 导出」写入目标目录'
+     · gen-V1_刀卡展开图_1-1.dxf
+     · gen-V1_图纸-网格俯视+刀卡侧视+轴测图_A3.pdf
+     · gen-V1_图纸-网格俯视+刀卡侧视+轴测图_A3.png
+  导出后目录文件数=18；状态='已导出 18 个文件到 D:\\Tools\\tmp\\packapp\\guiprobe_out\\网格刀卡'
+  ✓ 通过
+
+--- 瓦楞纸箱 (page 3) ---
+  刷新后：生成按钮=True 状态='参数就绪' 摘要行=25
+  on_generate() 返回，worker=运行中
+  生成完成 1.6s：文件 12 个；状态='生成完成（1.5s）：12 个文件在临时目录，点「② 导出」写入目标目录'
+     · gen_展开图_dieline_1-1.dxf
+     · gen_图纸-展开图+轴测图_A3.pdf
+     · gen_图纸-展开图+轴测图_A3.png
+  导出后目录文件数=12；状态='已导出 12 个文件到 D:\\Tools\\tmp\\packapp\\guiprobe_out\\瓦楞纸箱'
+  ✓ 通过
+
+== guiprobe 结束：失败 0/4 ==

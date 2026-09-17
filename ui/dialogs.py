@@ -14,7 +14,7 @@ import theme
 GITHUB_URL = "https://github.com/hawchou1995/packaging-designer"
 AUTHOR = "周豪 · 供应链管理部"
 APP_NAME = "包装设计器 Packaging Designer"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 DESC = ("面向瓦楞纸包装的参数量出图工具：片材、仿形垫块、网格刀卡、FEFCO 0201 / 0310 / 0312 纸箱。\n"
         "一次输入即产出 A3 图纸（展开图 + 轴测图 + GB 图框）、1:1 DXF、STEP/STL 数模与参数表。")
 

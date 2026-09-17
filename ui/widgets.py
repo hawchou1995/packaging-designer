@@ -235,7 +235,7 @@ class PreviewPane(QWidget):
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(6)
-        self.lab = QLabel("尚未生成。设置参数后点击「生成并导出」。")
+        self.lab = QLabel("尚未生成。点「① 生成」出图到临时目录，再点「② 导出」写入你的目录。")
         self.lab.setObjectName("Hint")
         self.lab.setAlignment(Qt.AlignCenter)
         self.lab.setMinimumHeight(200)
@@ -272,7 +272,7 @@ class BusyBar(QWidget):
         h.setSpacing(8)
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)
-        self.bar.setFixedHeight(4)
+        self.bar.setFixedHeight(6)
         self.bar.setVisible(False)
         self.status = QLabel("")
         self.status.setObjectName("Hint")
@@ -516,7 +516,7 @@ class GroupTable(QTableWidget):
         self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
     def set_groups(self, groups):
-        n = sum(len(rows) for _, rows in groups)
+        n = sum(len(rows) + (1 if title else 0) for title, rows in groups)
         self.setRowCount(n)
         i = 0
         for title, rows in groups:
