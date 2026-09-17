@@ -674,6 +674,17 @@ class GridPage(BasePage):
             g3.add(r)
         c3.add(g3)
 
+        c5 = self.card("两端折边（缓冲 / 加工）")
+        g5 = RowGrid(2)
+        self.f_foldon = check_field("自动折边（边距 ≤ 阈值时触发）", True, on_change=self._touched)
+        self.f_foldthr = num_field("触发阈值（mm）", 20.0, 0.0, 200.0, 1.0,
+                                   on_change=self._touched, hint="边距 ≤ 此值即折边")
+        self.f_foldlen = num_field("每端折边长（mm）", 30.0, 5.0, 120.0, 1.0,
+                                   on_change=self._touched, hint="折弯线距卡端 = 此值")
+        g5.add(self.f_foldon, span=True)
+        g5.add(self.f_foldthr)
+        g5.add(self.f_foldlen)
+        c5.add(g5)
         c4 = self.card("图纸比例")
         g4 = RowGrid(1)
         g4.add(self.scale_field())
@@ -684,7 +695,10 @@ class GridPage(BasePage):
         return dict(container=(self.f_L.widget.value(), self.f_W.widget.value(), self.f_H.widget.value()),
                     cell=(self.f_pl.widget.value(), self.f_pw.widget.value(), self.f_ph.widget.value()),
                     t=self.f_t.widget.value(), slot_w=self.f_slot.widget.value(),
-                    sep_t=self.f_sep.widget.value(), pads=self.f_pads.seg.value())
+                    sep_t=self.f_sep.widget.value(), pads=self.f_pads.seg.value(),
+                    fold_on=self.f_foldon.widget.isChecked(),
+                    fold_thr=self.f_foldthr.widget.value(),
+                    fold_len=self.f_foldlen.widget.value())
 
     def _price(self):
         return dict(code=self.f_mat.flute.value(), allow=self.f_allow.widget.value(),
@@ -714,6 +728,14 @@ class GridPage(BasePage):
                 d2["cards_short_total"] if d2 else "—"),
                ("边距 长/短", f"{d1['margin_l']:g} / {d1['margin_w']:g}" if d1 else "—",
                 f"{d2['margin_l']:g} / {d2['margin_w']:g}" if d2 else "—"),
+               ("两端折边（长/短）",
+                ("×".join(t for t, ok in (("有", d1["fold_l"]), ("无", not d1["fold_l"])) if ok and t == "有")
+                 or "无") + " / " + ("有" if d1 and d1.get("fold_w") else "无") if d1 else "—",
+                ("有" if d2 and d2.get("fold_l") else "无") + " / "
+                + ("有" if d2 and d2.get("fold_w") else "无") if d2 else "—"),
+               ("展开长 长/短（含折边）",
+                f"{d1['blank_L']:g} / {d1['blank_W']:g}" if d1 else "—",
+                f"{d2['blank_L']:g} / {d2['blank_W']:g}" if d2 else "—"),
                ("堆叠 ≤ 内高", f"{d1['H_stack']:g} ≤ {a['container'][2]:g}" if d1 else "—",
                 f"{d2['H_stack']:g} ≤ {a['container'][2]:g}" if d2 else "—"),
                ("每套报价", f"¥ {d1['price']['per_set']:.2f}" if (d1 and d1.get("price")) else "—",

@@ -235,7 +235,8 @@ def run_block(L, W, H, sl, sw, sh, gap, outdir, prefix="", margin_left=None,
 
 # ================================================================ 网格刀卡
 def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
-              version=1, name="瓦楞刀卡网格", price=None):
+              version=1, name="瓦楞刀卡网格", price=None,
+              fold_on=True, fold_thr=20.0, fold_len=30.0):
     """即时计算：→ (Params, rows, d)。"""
     from grid_core import Params, report
     L, W, H = container
@@ -245,7 +246,8 @@ def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
     slot_clear = max(0.0, (slot_w - t)) if slot_w else 0.0
     p = Params(L=L, W=W, H=H, pl=pl, pw=pw, ph=ph, t=t, version=version,
                input_mode="inner", pads=pads, slot_clear=slot_clear,
-               sep_t=(sep_t or 0.0), name=name)
+               sep_t=(sep_t or 0.0), fold_on=bool(fold_on),
+               fold_thr=float(fold_thr), fold_len=float(fold_len), name=name)
     errs, rows, d = report(p)
     if errs:
         raise ValueError("；".join(errs))
@@ -262,11 +264,13 @@ def grid_plan(container, cell, t, slot_w=None, sep_t=None, pads="both",
 
 def run_grid(container, cell, t, outdir, prefix="", slot_w=None, sep_t=None,
              pads="both", version=1, name="瓦楞刀卡网格", frame=None, scale=None,
-             price=None, progress=None, full=True):
+             price=None, progress=None, full=True,
+             fold_on=True, fold_thr=20.0, fold_len=30.0):
     """container=(L,W,H) 容器内尺寸（= 内衬外尺寸）；cell=(l,w,h) 每格；t=刀卡厚。"""
     from grid_model import items, write_dxf, export_step, write_stl, stl_check
     from grid_draw import build_sheet, render_axo
-    p, rows, d = grid_plan(container, cell, t, slot_w, sep_t, pads, version, name, price)
+    p, rows, d = grid_plan(container, cell, t, slot_w, sep_t, pads, version, name, price,
+                           fold_on=fold_on, fold_thr=fold_thr, fold_len=fold_len)
     L, W, H = container
     t_used = p.t
     slot_w_eff = slot_w if slot_w else (t_used + p.slot_clear)

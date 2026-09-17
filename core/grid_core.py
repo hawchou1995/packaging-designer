@@ -41,6 +41,9 @@ class Params:
     pads: str = "both"          # 顶/底隔板：both/bottom/top/none（中间隔板恒有）
     slot_clear: float = 0.0
     sep_t: float = 0.0         # 隔板厚度；0 → 与刀卡同厚
+    fold_on: bool = True       # 两端折边总开关
+    fold_thr: float = 20.0     # 触发阈值：边距 ≤ 此值即折边
+    fold_len: float = 30.0     # 每端折边长度
     name: str = "瓦楞刀卡网格"
 
 
@@ -100,6 +103,24 @@ def design(p: Params):
     d["area_cards"] = per_layer * layers / 1e6
     d["area_seps"] = d["seps_total"] * p.L * p.W / 1e6
     d["margin_ok"] = (margin_l >= MARGIN_MIN - 1e-9) and (margin_w >= MARGIN_MIN - 1e-9)
+
+    # ---- 两端折边：边距 ≤ fold_thr 触发；折边是纸板延伸（展开长 += 2×fold_len）----
+    fl, fw = float(p.fold_len), float(p.fold_thr)
+    fold_l = bool(p.fold_on) and margin_l <= fw + 1e-9
+    fold_w = bool(p.fold_on) and margin_w <= fw + 1e-9
+    blank_L = p.L + (2 * fl if fold_l else 0.0)
+    blank_W = p.W + (2 * fl if fold_w else 0.0)
+    d.update(fold_on=bool(p.fold_on), fold_thr=fw, fold_len=fl,
+             fold_l=fold_l, fold_w=fold_w, blank_L=blank_L, blank_W=blank_W,
+             fold_lines_L=([fl, blank_L - fl] if fold_l else []),
+             fold_lines_W=([fl, blank_W - fl] if fold_w else []))
+    # 折边带来的额外用纸（几何口径）
+    extra = 0.0
+    if fold_l:
+        extra += d["cards_long_total"] * 2 * fl * cell_h
+    if fold_w:
+        extra += d["cards_short_total"] * 2 * fl * cell_h
+    d["fold_extra_area"] = extra / 1e6
     return d
 
 
@@ -123,6 +144,18 @@ def report(p: Params):
                  f" = {d['seps_total']} 张 {p.L:g}×{p.W:g}×{d['st']:g}"),
         ("堆叠高度", f"{d['H_stack']:g} ≤ {p.H:g}（余量 {d['H_slack']:g}）"),
         ("收容数", f"{d['capacity']} = {d['n_l']}×{d['n_w']}×{d['layers']}"),
+        ("两端折边", ("长卡 ×、短卡 ×" if (d['fold_l'] and d['fold_w']) else
+                  "长卡 有、短卡 无" if d['fold_l'] else
+                  "长卡 无、短卡 有" if d['fold_w'] else "不触发（边距 > 阈值）")
+                  if d['fold_on'] else "已关闭"),
+        ("折边规格", (f"每端 {d['fold_len']:g}（板厚 {d['t']:g}，折 90°）"
+                  f"，触发阈值 边距≤{d['fold_thr']:g}"
+                  f"；折弯线距端 {d['fold_len']:g}") if (d['fold_l'] or d['fold_w'])
+                  else f"（边距 {d['margin_l']:g}/{d['margin_w']:g} 均 > {d['fold_thr']:g}）"),
+        ("展开长（含折边）", f"长刀卡 {d['blank_L']:g} × {d['cell_h']:g}"
+                       f"（{d['cards_long_total']} 张）· 短刀卡 {d['blank_W']:g} × {d['cell_h']:g}"
+                       f"（{d['cards_short_total']} 张）"),
+        ("折边增加用纸", f"{d['fold_extra_area']:.4f} m²"),
         ("用纸（刀卡/隔板）", f"{d['area_cards']:.4f} / {d['area_seps']:.4f} m²"),
     ]
     errs = []
@@ -140,6 +173,9 @@ def param_lines_zh(p: Params):
         f"容器内尺寸 {p.L:g}×{p.W:g}×{p.H:g}；产品+缓冲 {p.pl:g}×{p.pw:g}×{p.ph:g}",
         f"每格 {d['cell_l']:g}×{d['cell_w']:g}×{d['cell_h']:g}；纸板厚 {d['t']:g}；边距 {d['margin_l']:g}/{d['margin_w']:g}",
         f"格数 {d['n_l']}×{d['n_w']}；层数 {d['layers']}；收容数 {d['capacity']}",
+        (f"两端折边：每端 {d['fold_len']:g}（板厚 {d['t']:g}，折弯线距端 {d['fold_len']:g}，"
+         f"展开长 长{d['blank_L']:g}/短{d['blank_W']:g}）"
+         if (d['fold_l'] or d['fold_w']) else "两端折边：不触发"),
         f"长刀卡 {d['cards_long']} 张/层（{d['Lc']:g}×{d['cell_h']:g}，{d['slots_long']} 槽）×{d['layers']} 层"
         f" = {d['cards_long_total']} 张；",
         f"短刀卡 {d['cards_short']} 张/层（{d['Wc']:g}×{d['cell_h']:g}，{d['slots_short']} 槽）×{d['layers']} 层"

@@ -177,7 +177,7 @@ def main():
             p = gc.Params(**args)
             e, r, d = gc.report(p)
             return gd.build_sheet(p, d)
-        cases.append((tag, "grid", mk, (192.0, 149.4)))
+        cases.append((tag, "grid", mk, (187.0, 247.0)))  # 实测内容范围（含折边预留）
 
     # 纸箱三型（用户反馈「纸箱图 1 尺寸标注压图线」）
     c201 = load("c201", os.path.join(CORE, "box0201_core.py"))

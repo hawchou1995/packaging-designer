@@ -31,10 +31,41 @@ def close(a, b, tol=1e-9):
 
 
 def diff(path, a, b, out, ignore=()):
+    """基线比对不变量：**旧版已有的值一个都不能变**；新版新增的键/条目算扩展，不算回归。
+
+    这样既不会因为「加了新字段」误报回归，也不会放过任何一个旧值被改动的情况。
+    """
     if isinstance(a, dict) and isinstance(b, dict):
         for k in (set(a) | set(b)) - set(ignore):
-            diff(f"{path}.{k}", a.get(k), b.get(k), out, ignore)
+            if k not in b:            # 新版新增字段 → 扩展
+                continue
+            if k not in a:            # 旧版有、新版没了 → 真回归
+                out.append(f"{path}.{k}: 旧版有 {b[k]!r}，新版缺失")
+                continue
+            diff(f"{path}.{k}", a[k], b[k], out, ignore)
     elif isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
+        # 元素为 dict 且带 name（如 3D 零件表）：按名字配对，旧条目必须原样存在
+        if (a and b and isinstance(a[0], dict) and isinstance(b[0], dict)
+                and "name" in a[0] and "name" in b[0]):
+            amap = {x["name"]: x for x in a}
+            for y in b:
+                if y["name"] not in amap:
+                    out.append(f"{path}[{y['name']}]: 旧版有，新版缺失")
+                else:
+                    diff(f"{path}[{y['name']}]", amap[y["name"]], y, out, ignore)
+            return
+        # 元素为 (键, 值) 两元组（摘要行）：旧行必须原样存在，新增行算扩展
+        if (a and b and isinstance(a[0], (tuple, list)) and len(a[0]) == 2
+                and isinstance(a[0][0], str) and isinstance(b[0][0], str)):
+            amap = {x[0]: x[1] for x in a}
+            if len(amap) != len(a):
+                out.append(f"{path}: 新版摘要存在重复键")
+            for k, v in b:
+                if k not in amap:
+                    out.append(f"{path}[{k}]: 旧版有 {v!r}，新版缺失")
+                else:
+                    diff(f"{path}[{k}]", amap[k], v, out, ignore)
+            return
         if len(a) != len(b):
             out.append(f"{path}: len {len(a)} != {len(b)}")
             return

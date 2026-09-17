@@ -49,6 +49,20 @@ def items_layer(p, d):
                 add(f"L{j:02d}_f{a:07.1f}", (w, t, Hc), (cx, y0 + yc, Hc / 2))
             else:
                 add(f"L{j:02d}_s{a:07.1f}", (w, t, Hc / 2), (cx, y0 + yc, Hc / 4))
+    # 折边实体：绕竖直折弯线折 90° → 垂直竖板（30 沿箱壁方向 × Hc 高 × t 厚）
+    fl = d.get("fold_len", 0.0)
+    if d.get("fold_l"):                       # 长卡两端（沿 X 的两端），折边朝 Y 中线折
+        for j, yc in enumerate(ys):
+            sy = -1.0 if yc > W / 2.0 else 1.0
+            add(f"LF{j:02d}_a", (t, fl, Hc), (x0 + t / 2, y0 + yc + sy * fl / 2, Hc / 2))
+            add(f"LF{j:02d}_b", (t, fl, Hc),
+                (x0 + L - t / 2, y0 + yc + sy * fl / 2, Hc / 2))
+    if d.get("fold_w"):                       # 短卡两端（沿 Y 的两端），折边朝 X 中线折
+        for i, xc in enumerate(xs):
+            sx = -1.0 if xc > L / 2.0 else 1.0
+            add(f"SF{i:02d}_a", (fl, t, Hc), (x0 + xc + sx * fl / 2, y0 + t / 2, Hc / 2))
+            add(f"SF{i:02d}_b", (fl, t, Hc),
+                (x0 + xc + sx * fl / 2, y0 + W - t / 2, Hc / 2))
     # 短卡（沿 Y），槽自底向上（槽段保留上半幅）
     for i, xc in enumerate(xs):
         for (a, b, is_slot) in _card_segments(W, ys, t):
@@ -176,22 +190,28 @@ def _dedupe(pts):
 
 
 def card_outline_long(p, d):
-    """长刀卡展开：全长 L，槽自顶向下、距端边 margin_l。"""
+    """长刀卡展开：展开长 = L + 2×折边（折边在同一块板上，折弯线在距端 fold_len 处）。"""
     t, Hc = d["t"], d["cell_h"]
-    pts = [(0.0, 0.0), (p.L, 0.0), (p.L, Hc)]
+    fl = d.get("fold_len", 0.0) if d.get("fold_l") else 0.0
+    x0 = fl                                    # 卡体起点（含左折边）
+    pts = [(0.0, 0.0), (x0 + p.L, 0.0), (x0 + p.L, Hc)]
     for s in reversed(_slot_centers(d["margin_l"], d["slots_long"], d["pitch_l"], t)):
-        pts += [(s + t / 2, Hc), (s + t / 2, Hc / 2), (s - t / 2, Hc / 2), (s - t / 2, Hc)]
+        pts += [(x0 + s + t / 2, Hc), (x0 + s + t / 2, Hc / 2),
+                (x0 + s - t / 2, Hc / 2), (x0 + s - t / 2, Hc)]
     pts += [(0.0, Hc)]
     return _dedupe(pts)
 
 
 def card_outline_short(p, d):
-    """短刀卡展开：全长 W，槽自底向上、距端边 margin_w。"""
+    """短刀卡展开：展开长 = W + 2×折边。"""
     t, Hc = d["t"], d["cell_h"]
+    fl = d.get("fold_len", 0.0) if d.get("fold_w") else 0.0
+    y0 = fl
     pts = [(0.0, 0.0)]
     for s in _slot_centers(d["margin_w"], d["slots_short"], d["pitch_w"], t):
-        pts += [(s - t / 2, 0.0), (s - t / 2, Hc / 2), (s + t / 2, Hc / 2), (s + t / 2, 0.0)]
-    pts += [(p.W, 0.0), (p.W, Hc), (0.0, Hc)]
+        pts += [(y0 + s - t / 2, 0.0), (y0 + s - t / 2, Hc / 2),
+                (y0 + s + t / 2, Hc / 2), (y0 + s + t / 2, 0.0)]
+    pts += [(y0 + p.W, 0.0), (y0 + p.W, Hc), (0.0, Hc)]
     return _dedupe(pts)
 
 
@@ -200,6 +220,7 @@ def write_dxf(p, d, path):
     doc = ezdxf.new("R2010")
     doc.layers.add("CUT", color=7)
     doc.layers.add("NOTES", color=8)
+    doc.layers.add("FOLD", color=1, linetype="DASHDOT")   # 折弯线
     msp = doc.modelspace()
     t, Hc = d["t"], d["cell_h"]
     msp.add_lwpolyline(card_outline_long(p, d), close=True, dxfattribs={"layer": "CUT"})
@@ -218,5 +239,25 @@ def write_dxf(p, d, path):
     msp.add_text(f"隔板 x{d['seps_total']}（中间 {d['seps_mid']} 必有 + 底/顶 {d['seps_tb']}）"
                  f"  {p.L:g}x{p.W:g}  t={t:g}",
                  height=10.0, dxfattribs={"layer": "NOTES"}).set_placement((0.0, y_pad + p.W + 12.0))
+
+    # 折弯线（点划线）：长卡在展开图上距两端 fold_len；短卡同理（偏移 90）
+    for (xa, ya) in ((0.0, None),):
+        pass
+    if d.get("fold_l"):
+        for xx in d["fold_lines_L"]:
+            msp.add_line((xx, 0.0), (xx, Hc), dxfattribs={"layer": "FOLD"})
+    if d.get("fold_w"):
+        for yy in d["fold_lines_W"]:
+            msp.add_line((ox + yy, 0.0), (ox + yy, Hc), dxfattribs={"layer": "FOLD"})
+    if d.get("fold_l") or d.get("fold_w"):
+        _fl = d["fold_len"]
+        tips = []
+        if d.get("fold_l"):
+            tips.append(f"长卡两端各 {_fl:g}（展开 {d['blank_L']:g}）")
+        if d.get("fold_w"):
+            tips.append(f"短卡两端各 {_fl:g}（展开 {d['blank_W']:g}）")
+        msp.add_text("折边 FOLD 图层（点划线=折弯线，折 90°）：" + "；".join(tips)
+                     + f"；触发条件 边距≤{d['fold_thr']:g}",
+                     height=10.0, dxfattribs={"layer": "NOTES"}).set_placement((0.0, -40.0))
     doc.saveas(path)
     return path
