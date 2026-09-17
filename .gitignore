@@ -12,6 +12,10 @@ installer/*.exe
 # 运行/自检产物（自检输出目录统一以 _ 开头）
 _*/
 guiprobe_out/
+_dgsread/
+_realdir/
+_v104/
+export_e2e_*/
 _*.txt
 _smoke/
 _guitest/
