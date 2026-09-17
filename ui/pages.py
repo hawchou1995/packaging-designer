@@ -18,10 +18,39 @@ from PySide6.QtWidgets import (QFileDialog, QGridLayout, QHBoxLayout, QLabel, QL
 import backend
 import price_lib
 from widgets import (BusyBar, Card, CompareTable, FileList, GroupTable, PreviewPane, RowGrid,
-                     ScaleField, check_field, flute_field, num_field, open_path, seg_field,
-                     text_field)
+                     ScaleField, check_field, flute_field, has_assoc, num_field, open_path,
+                     open_path_ex, seg_field, text_field)
 
 TMP_ROOT = os.path.join(tempfile.gettempdir(), "PackagingDesigner")
+
+def _clean_dir(raw):
+    """把用户填/粘的输出目录清洗成可用绝对路径。
+
+    处理：首尾空白、成对引号（粘路径常见）、环境变量、~、Windows 路径分隔符。
+    """
+    s = (raw or "").strip().strip('"').strip("'").strip()
+    s = os.path.expandvars(os.path.expanduser(s))
+    if not s:
+        return ""
+    return os.path.abspath(s)
+
+
+def _writable(d):
+    """目录是否可写（不存在则尝试建）。→ (ok, 原因)"""
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError as e:
+        return False, f"无法创建目录：{e}"
+    probe = os.path.join(d, ".pd_write_test.tmp")
+    try:
+        with open(probe, "w", encoding="utf-8") as fh:
+            fh.write("ok")
+        os.remove(probe)
+    except OSError as e:
+        return False, f"目录不可写：{e}"
+    return True, ""
+
+
 
 
 class GenWorker(QThread):
@@ -64,6 +93,7 @@ class BasePage(QWidget):
         self._gen_files = []
         self._gen_prefix = ""
         self._gen_sig = None
+        self._export_files = []          # 上次导出成功的**目标目录文件**（「打开图纸」优先用）
         self._outdir = settings.outdir
 
         root = QVBoxLayout(self)
@@ -119,6 +149,8 @@ class BasePage(QWidget):
         g.setHorizontalSpacing(8)
         g.setVerticalSpacing(5)
         self.out_edit = QLineEdit(settings.outdir)
+        self.out_edit.setPlaceholderText(r"例：D:\Packaging\输出（可直接粘贴路径）")
+        self.out_edit.textChanged.connect(self._on_outdir_changed)
         browse = QPushButton("浏览…")
         browse.setFixedWidth(64)
         browse.clicked.connect(self.on_browse)
@@ -148,12 +180,16 @@ class BasePage(QWidget):
         self.file_list = FileList()
         self.file_list.setFixedHeight(66)
         g.addWidget(self.file_list, 3, 0, 1, 4)
+        b3 = QPushButton("图框字段…")
+        b3.setToolTip("填写图纸右下角图框：单位名称 / 设计 / 制图 / 校对 / 审核 / 工艺 / 标准化 / 批准 / 日期")
+        b3.clicked.connect(self.on_frame_fields)
         b1 = QPushButton("打开图纸")
         b1.clicked.connect(self.on_open_main)
         b2 = QPushButton("打开目录")
-        b2.clicked.connect(lambda: open_path(self._outdir))
+        b2.clicked.connect(self.on_open_dir)
         side = QVBoxLayout()
         side.setSpacing(4)
+        side.addWidget(b3)
         side.addWidget(b1)
         side.addWidget(b2)
         g.addLayout(side, 3, 4)
@@ -165,6 +201,14 @@ class BasePage(QWidget):
         self.build_form()
         self.refresh()
         self._sync_export_hint()
+
+    def _on_outdir_changed(self, text):
+        # R1：输入框改了就立即生效，「打开目录」与导出都读同一处
+        self._outdir = _clean_dir(text)
+
+    def cur_outdir(self):
+        """当前输出目录（清洗后）——「打开目录」与导出共用的唯一来源。"""
+        return _clean_dir(self.out_edit.text())
 
     # ---------------- 基础 ----------------
     @staticmethod
@@ -220,8 +264,33 @@ class BasePage(QWidget):
         if d:
             self.out_edit.setText(d)
 
+    def on_frame_fields(self):
+        from dialogs import FrameDialog
+        d = FrameDialog(self.settings, self)
+        if d.exec() == d.Accepted:
+            self._touched()                 # 图框字段变了 → 导出按钮按签名规则失效
+            self.busy.ok("图框字段已保存：重新「① 生成」后写进图纸")
+
+    def on_open_dir(self):
+        """R1：永远打开**当前输入框里的目录**，不是建页时的旧值。"""
+        d = self.cur_outdir()
+        if not d:
+            self.busy.err("请先在「输出目录」里填写或选择目录")
+            return
+        ok, why = _writable(d)
+        if not ok:
+            self.busy.err(f"{why}：{d}")
+            return
+        self._outdir = d
+        ok, why = open_path_ex(d)
+        if not ok:
+            self.busy.err(why)
+        elif why:
+            self.busy.info(why)
+
     def on_open_main(self):
-        files = self._gen_files
+        # R2：导出之后「打开图纸」要开导出副本；没导出时才回到临时件
+        files = self._export_files or self._gen_files
         if not files:
             self.busy.info("尚未生成文件")
             return
@@ -232,8 +301,19 @@ class BasePage(QWidget):
                 break
         if pick is None:
             pick = next((f for f in files if f.endswith(".pdf")), None) or files[0]
-        if not open_path(pick):
-            self.busy.err("文件不存在（可能已被移动）")
+        # 本机实测 .pdf 可能没有默认程序 → 这时改开同名 PNG（能看见图），并说明原因
+        note = ""
+        if pick.endswith(".pdf") and not has_assoc(pick):
+            same = os.path.splitext(pick)[0] + ".png"
+            if os.path.exists(same) and has_assoc(same):
+                note = ("本机 .pdf 没有默认打开程序 → 已打开同图 PNG 预览；"
+                        "PDF 仍在原处，装个 PDF 阅读器即可打开")
+                pick = same
+        ok, why = open_path_ex(pick)
+        if ok and (note or why):
+            self.busy.info(note or why)  # 兜底成功也要说清为什么开的不是 PDF
+        elif not ok:
+            self.busy.err(why)
 
     def on_generate(self):
         if self._worker is not None and self._worker.isRunning():
@@ -260,6 +340,7 @@ class BasePage(QWidget):
         self.btn_gen.setText("① 生成")
         el = time.time() - getattr(self, "_t_gen", time.time())
         self._gen_files = list(result.files)
+        self._export_files = []             # 新一批生成 → 旧的导出清单作废
         self._gen_prefix = prefix
         self._gen_sig = sig
         self.file_list.set_files(self._gen_files)
@@ -291,15 +372,17 @@ class BasePage(QWidget):
         if not self._gen_files:
             self.busy.err("请先「① 生成」")
             return
-        outdir = self.out_edit.text().strip()
+        outdir = self.cur_outdir()          # R3：清洗引号/空格/~，转绝对路径
         if not outdir:
             self.busy.err("请先选择输出目录")
             return
-        try:
-            os.makedirs(outdir, exist_ok=True)
-        except OSError as e:
-            self.busy.err(f"目录不可用：{e}")
+        ok, why = _writable(outdir)
+        if not ok:                          # R3：写前预检，一次说清原因
+            self.busy.err(f"{why}（{outdir}）")
             return
+        self._outdir = outdir
+        if outdir != self.out_edit.text().strip():
+            self.out_edit.setText(outdir)   # 把清洗后的规范路径回填，用户看得见生效了
         prefix = self.prefix_edit.text().strip()
         pre = (prefix + "_") if prefix else ""
         gpre = self._gen_prefix or ""
@@ -319,16 +402,51 @@ class BasePage(QWidget):
             try:
                 shutil.copy2(f, dst)
                 done.append(dst)
+            except PermissionError:
+                # 目标被占用（常见：PDF 正开着）→ 换个名字也要把文件交出去，别让用户少图
+                stem, ext = os.path.splitext(base)
+                alt = None
+                for k in range(2, 10):
+                    cand = os.path.join(outdir, f"{stem} ({k}){ext}")
+                    try:
+                        shutil.copy2(f, cand)
+                        alt = cand
+                        break
+                    except PermissionError:
+                        continue
+                    except OSError as e:
+                        errs.append(f"{base}: {e}")
+                        break
+                if alt:
+                    done.append(alt)
+                elif not any(e.startswith(base + ":") for e in errs):
+                    errs.append(f"{base}: 目标文件被占用，已试到 “{stem} (9){ext}” 仍不可写")
             except OSError as e:
                 errs.append(f"{base}: {e}")
         self._outdir = outdir
+        # R2：记住导出副本清单，「打开图纸」此后开的就是它
+        self._export_files = list(done)
         self.file_list.set_files(done)
+        # R3：导出后复查每个文件真的落地且大小一致
+        missing = [d for d in done
+                   if not (os.path.isfile(d) and os.path.getsize(d) > 0)]
         if errs:
             self.busy.err(f"导出 {len(done)} 个，失败 {len(errs)} 个：{errs[0]}")
+        elif missing:
+            self.busy.err(f"有 {len(missing)} 个文件没有落地：{os.path.basename(missing[0])}")
         else:
             self.busy.ok(f"已导出 {len(done)} 个文件到 {outdir}")
+        # 用户填过的目录 = 下次默认（不然「改了默认目录也不听」还会再犯）
+        try:
+            if self.settings.outdir != outdir:
+                self.settings.outdir = outdir
+                self.settings.save()
+        except OSError:
+            pass
         if self.settings.open_after:
-            open_path(outdir)
+            ok, why = open_path_ex(outdir)
+            if not ok:
+                self.busy.err(f"已导出 {len(done)} 个文件，但打不开目录：{why}")
 
     def on_fail(self, msg):
         self.btn_gen.setEnabled(True)

@@ -308,20 +308,72 @@ class BusyBar(QWidget):
         self.status.style().polish(self.status)
 
 
-def open_path(path):
-    """打开文件 / 目录（Windows：资源管理器或默认程序）。"""
-    if not path:
-        return False
-    if os.path.isdir(path):
-        if sys.platform.startswith("win"):
-            os.startfile(path)                       # noqa: S606
-        else:
-            subprocess.Popen(["xdg-open", path])
+def has_assoc(path):
+    """该扩展名在本机是否有默认打开方式（本机实测：.pdf 可能完全没有关联）。"""
+    if not sys.platform.startswith("win"):
         return True
-    if os.path.exists(path):
-        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+    ext = os.path.splitext(path)[1].lower()
+    if not ext:
+        return True
+    try:
+        import winreg
+        base = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\"
+        cands = [(winreg.HKEY_CLASSES_ROOT, ext, ""),
+                 (winreg.HKEY_CURRENT_USER, base + ext + "\\UserChoice", "ProgId")]
+        for root, sub, name in cands:
+            try:
+                with winreg.OpenKey(root, sub) as k:
+                    if winreg.QueryValueEx(k, name)[0]:
+                        return True
+            except OSError:
+                continue
+    except ImportError:
         return True
     return False
+
+
+def reveal_in_explorer(path):
+    """在资源管理器中定位文件/目录（无关联程序时的兜底，必定可见）。"""
+    if not sys.platform.startswith("win"):
+        return False
+    p = os.path.normpath(path)
+    try:
+        subprocess.Popen(["explorer", p] if os.path.isdir(p)
+                         else ["explorer", "/select," + p])
+        return True
+    except OSError:
+        return False
+
+
+def open_path_ex(path):
+    """打开文件/目录 → (成功?, 提示语)。无声失败必须说出来，不能假装打开了。"""
+    if not path:
+        return False, "路径为空"
+    if not os.path.exists(path):
+        return False, f"文件不存在（可能已被移动）：{os.path.basename(path)}"
+    if os.path.isdir(path):
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(path)                   # noqa: S606
+            else:
+                subprocess.Popen(["xdg-open", path])
+            return True, ""
+        except OSError as e:
+            if reveal_in_explorer(path):
+                return True, f"系统未响应打开目录，已在资源管理器定位（{e}）"
+            return False, f"无法打开目录：{e}"
+    if not has_assoc(path):
+        ext = os.path.splitext(path)[1] or "该类型"
+        if reveal_in_explorer(path):
+            return True, f"本机 {ext} 没有默认打开程序，已在资源管理器定位；右键 →「打开方式」即可查看"
+        return False, f"本机 {ext} 没有默认打开程序，请在资源管理器里打开：{path}"
+    QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+    return True, ""
+
+
+def open_path(path):
+    """打开文件 / 目录（Windows：资源管理器或默认程序）。"""
+    return open_path_ex(path)[0]
 
 
 class CompareTable(QTableWidget):

@@ -14,7 +14,7 @@ import theme
 GITHUB_URL = "https://github.com/hawchou1995/packaging-designer"
 AUTHOR = "周豪 · 供应链管理部"
 APP_NAME = "包装设计器 Packaging Designer"
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 DESC = ("面向瓦楞纸包装的参数量出图工具：片材、仿形垫块、网格刀卡、FEFCO 0201 / 0310 / 0312 纸箱。\n"
         "一次输入即产出 A3 图纸（展开图 + 轴测图 + GB 图框）、1:1 DXF、STEP/STL 数模与参数表。")
 
@@ -43,6 +43,15 @@ class SettingsDialog(QDialog):
         row.addWidget(cancel)
         v.addLayout(row)
 
+    @staticmethod
+    def _sec(text):
+        lab = QLabel(text)
+        lab.setObjectName("FieldHint")
+        f = lab.font()
+        f.setBold(True)
+        lab.setFont(f)
+        return lab
+
     def _settings_tab(self):
         w = QWidget()
         f = QFormLayout(w)
@@ -66,14 +75,17 @@ class SettingsDialog(QDialog):
         self.e_author = QLineEdit(self.settings.author)
         self.e_author.setPlaceholderText("出现在图纸副标题「生成：…」与参数表里")
         f.addRow("图纸 · 生成人", self.e_author)
-        self.e_designed = QLineEdit(self.settings.designed)
-        self.e_drawn = QLineEdit(self.settings.drawn)
-        self.e_checked = QLineEdit(self.settings.checked)
-        self.e_approved = QLineEdit(self.settings.approved)
-        f.addRow("图框 · 设计", self.e_designed)
-        f.addRow("图框 · 制图", self.e_drawn)
-        f.addRow("图框 · 审核", self.e_checked)
-        f.addRow("图框 · 批准", self.e_approved)
+        f.addRow("", self._sec("图框签署栏（与图纸右下角栏位一一对应）"))
+        for key, lab in (("designed", "设计"), ("drawn", "制图"), ("proofed", "校对"),
+                         ("checked", "审核"), ("process", "工艺"), ("standard", "标准化"),
+                         ("approved", "批准")):
+            w = QLineEdit(getattr(self.settings, key))
+            w.setPlaceholderText("可留空")
+            setattr(self, "e_" + key, w)
+            f.addRow(f"图框 · {lab}", w)
+        self.e_date = QLineEdit(self.settings.date)
+        self.e_date.setPlaceholderText("留空 = 生成当天日期")
+        f.addRow("图框 · 日期", self.e_date)
         self.c_open = QCheckBox("生成完成后自动打开输出目录")
         self.c_open.setChecked(self.settings.open_after)
         f.addRow("", self.c_open)
@@ -148,10 +160,62 @@ class SettingsDialog(QDialog):
         s.prefix = self.e_prefix.text().strip()
         s.company = self.e_company.text().strip() or s.company
         s.author = self.e_author.text().strip() or s.author
-        s.designed = self.e_designed.text().strip()
-        s.drawn = self.e_drawn.text().strip()
-        s.checked = self.e_checked.text().strip()
-        s.approved = self.e_approved.text().strip()
+        for key in ("designed", "drawn", "proofed", "checked", "process", "standard",
+                    "approved", "date"):
+            setattr(s, key, getattr(self, "e_" + key).text().strip())
         s.open_after = self.c_open.isChecked()
         s.save()
+        self.accept()
+
+
+class FrameDialog(QDialog):
+    """只维护图框字段的轻量对话框——在图框里看到空格子时直接开这个填。"""
+
+    FIELDS = (("company", "单位名称"), ("author", "生成人（副标题）"),
+              ("designed", "设计"), ("drawn", "制图"), ("proofed", "校对"),
+              ("checked", "审核"), ("process", "工艺"), ("standard", "标准化"),
+              ("approved", "批准"), ("date", "日期（留空 = 当天）"))
+
+    def __init__(self, settings, parent=None):
+        super().__init__(parent)
+        self.settings = settings
+        self.setWindowTitle("图框字段")
+        self.setMinimumWidth(430)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(16, 14, 16, 12)
+        v.setSpacing(10)
+        f = QFormLayout()
+        f.setLabelAlignment(Qt.AlignRight)
+        f.setHorizontalSpacing(12)
+        f.setVerticalSpacing(7)
+        self.edits = {}
+        for key, lab in self.FIELDS:
+            w = QLineEdit(str(getattr(settings, key, "") or ""))
+            if key == "date":
+                w.setPlaceholderText("留空 = 生成当天日期")
+            self.edits[key] = w
+            f.addRow(lab, w)
+        v.addLayout(f)
+        hint = QLabel("这些值直接写进图纸右下角图框（GB/T 10609.1 签署栏）；保存后重新「生成」生效。")
+        hint.setObjectName("FieldHint")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        ok = QPushButton("保存")
+        ok.setObjectName("Primary")
+        ok.clicked.connect(self.on_save)
+        cancel = QPushButton("关闭")
+        cancel.clicked.connect(self.reject)
+        row.addWidget(ok)
+        row.addWidget(cancel)
+        v.addLayout(row)
+
+    def on_save(self):
+        for key, w in self.edits.items():
+            val = w.text().strip()
+            if key == "company" and not val:
+                continue
+            setattr(self.settings, key, val)
+        self.settings.save()
         self.accept()

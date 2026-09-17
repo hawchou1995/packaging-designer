@@ -44,7 +44,9 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
                scale_str=_ss(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
-               checked=meta.get("checked", ""), approved=meta.get("approved", ""))
+               proofed=meta.get("proofed", ""), checked=meta.get("checked", ""),
+               process=meta.get("process", ""), standard=meta.get("standard", ""),
+               approved=meta.get("approved", ""), date=meta.get("date", ""))
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, page[0])
     ax.set_ylim(0, page[1])

@@ -98,7 +98,9 @@ def frame_meta(frame=None):
     return dict(company=f.get("company") or "上海银轮热交换系统有限公司",
                 author=f.get("author") or "包装周哥",
                 designed=f.get("designed", ""), drawn=f.get("drawn", ""),
-                checked=f.get("checked", ""), approved=f.get("approved", ""))
+                proofed=f.get("proofed", ""), checked=f.get("checked", ""),
+                process=f.get("process", ""), standard=f.get("standard", ""),
+                approved=f.get("approved", ""), date=f.get("date", ""))
 
 
 def _fmt3(v):

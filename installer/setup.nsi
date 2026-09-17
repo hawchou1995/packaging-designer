@@ -9,11 +9,11 @@ SetCompressorDictSize 64
 
 !define APP_NAME       "包装设计器"
 !define APP_NAME_EN    "Packaging Designer"
-!define APP_VERSION    "1.0.3"
+!define APP_VERSION    "1.0.4"
 !define APP_PUBLISHER  "周豪（hawchou1995）"
 !define APP_URL        "https://github.com/hawchou1995/packaging-designer"
 !define APP_EXE        "PackagingDesigner.exe"
-!define SRC_DIR        "..\dist103\PackagingDesigner"
+!define SRC_DIR        "..\dist104\PackagingDesigner"
 
 Name "${APP_NAME} ${APP_VERSION}"
 BrandingText "${APP_NAME} ${APP_VERSION} · ${APP_URL}"
@@ -24,7 +24,7 @@ InstallDirRegKey HKCU "Software\PackagingDesigner" "InstallDir"
 ShowInstDetails show
 ShowUninstDetails show
 
-VIProductVersion "1.0.3.0"
+VIProductVersion "1.0.4.0"
 VIAddVersionKey /LANG=2052 "ProductName"     "${APP_NAME} ${APP_NAME_EN}"
 VIAddVersionKey /LANG=2052 "CompanyName"     "${APP_PUBLISHER}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APP_NAME} 安装程序"

@@ -225,7 +225,9 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                scale_str=scale_str(scale), sheet="A3",
                company=meta.get("company", "上海银轮热交换系统有限公司"),
                designed=meta.get("designed", ""), drawn=meta.get("drawn", ""),
-               checked=meta.get("checked", ""), approved=meta.get("approved", ""))
+               proofed=meta.get("proofed", ""), checked=meta.get("checked", ""),
+               process=meta.get("process", ""), standard=meta.get("standard", ""),
+               approved=meta.get("approved", ""), date=meta.get("date", ""))
     return fig
 
 

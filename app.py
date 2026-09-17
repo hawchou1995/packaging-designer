@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings()
-        self.setWindowTitle(f"{APP_NAME} 1.0.3")
+        self.setWindowTitle(f"{APP_NAME} 1.0.4")
         ic = theme.icon_path("app.ico")
         if os.path.exists(ic):
             self.setWindowIcon(QIcon(ic))
@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             for p in self.pages:
                 p.out_edit.setText(self.settings.outdir)
+                p._outdir = p.cur_outdir()      # R1：别让「打开目录」还开老目录
                 p.prefix_edit.setText(self.settings.prefix)
             self.pages[2].refresh()
 

@@ -40,12 +40,49 @@ def run_case(app, page, outdir, prefix, tag, report):
     n_gen = len(page._gen_files)
     page.on_export()
     app.processEvents()
-    n_out = len([f for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))])
-    report.append((tag, n_gen, n_out, page.busy.status.text()[:44]))
-    return n_gen, n_out
+    # 不变量（比“数量相等”更强）：每个生成件都要有一个**内容一致**的导出副本；
+    # 目标被占用时允许落到「xxx (2).pdf」这类编号名上，但不能丢件。
+    import hashlib
+
+    def _h(p):
+        with open(p, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+
+    out_files = [os.path.join(outdir, f) for f in os.listdir(outdir)
+                 if os.path.isfile(os.path.join(outdir, f))]
+    out_hashes = {}
+    for p in out_files:
+        try:
+            out_hashes.setdefault(_h(p), []).append(os.path.basename(p))
+        except OSError:
+            pass
+    missing = [os.path.basename(g) for g in page._gen_files if _h(g) not in out_hashes]
+    err = page.busy.status.text()
+    ok = n_gen > 0 and not missing and "失败" not in err
+    detail = err[:44] if ok else (f"缺件 {missing[:2]}" if missing else err[:44])
+    report.append((tag, n_gen, len(out_files), detail, ok, len(missing)))
+    return n_gen, len(out_files)
+
+
+# -*- guard -*-
+def _iso_guard(base_dir):
+    """离线测试护栏：把 Settings 指到临时 INI，禁止写用户真实注册表设置。"""
+    import os as _os
+    from PySide6.QtCore import QSettings as _QS
+    import settings as _st
+    ini = _os.path.join(base_dir, "_settings.ini")
+
+    def _init(self):
+        self.q = _QS(ini, _QS.IniFormat)
+        for k, v in _st.DEFAULTS.items():
+            setattr(self, k, self.q.value(k, v))
+        self.open_after = str(self.open_after).lower() in ("true", "1")
+
+    _st.Settings.__init__ = _init
 
 
 def main():
+    _iso_guard(os.path.dirname(os.path.abspath(__file__)))   # 护栏：不碰用户真实设置
     app = QApplication([])
     app.setStyleSheet(theme.qss())
     w = main_app.MainWindow()
@@ -103,14 +140,13 @@ def main():
             pg.refresh()
         print(f"{tag} 摘要行数:", pg.table.rowCount(), "| 生成按钮:", pg.btn_gen.isEnabled())
         if not pg.btn_gen.isEnabled():
-            report.append((tag, 0, 0, "被阻断: " + pg.busy.status.text()[:40]))
+            report.append((tag, 0, 0, "被阻断: " + pg.busy.status.text()[:40], False, 0))
             continue
         run_case(app, pg, os.path.join(OUT, tag), tag, tag, report)
 
     print("\n=== GUI 端到端（生成 → 导出）===")
     bad = 0
-    for tag, n_gen, n_out, msg in report:
-        ok = n_gen > 0 and n_out == n_gen
+    for tag, n_gen, n_out, msg, ok, _miss in report:
         bad += 0 if ok else 1
         print(f"  {'✓' if ok else '✗'} {tag:14s} 生成 {n_gen:3d} → 导出 {n_out:3d}  {msg}")
     print("RESULT:", "PASS" if not bad else f"FAIL {bad}")

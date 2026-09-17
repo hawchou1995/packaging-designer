@@ -52,10 +52,16 @@ def _fit_lines(txt, max_mm, fs, max_lines=2):
     return [txt], fs
 
 
+def _today():
+    import datetime
+    return datetime.date.today().isoformat()
+
+
 def draw_frame(fig, page=(420.0, 297.0), *, name="", material="瓦楞纸板",
                dwgno="", version="A", scale_str="1:5", sheet="A3",
                page_no=1, page_total=1, company="上海银轮热交换系统有限公司",
-               designed="", drawn="", checked="", approved="", date="",
+               designed="", drawn="", proofed="", checked="", process="", standard="",
+               approved="", date="",
                fs=7.2, tick_fs=6.4, lw=0.55):
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, page[0])
@@ -105,8 +111,10 @@ def draw_frame(fig, page=(420.0, 297.0), *, name="", material="瓦楞纸板",
     ax.plot([xl, xl], [y0, y1], color="k", lw=lw, zorder=51)
     xl2 = xl + 16.0                                 # 右区字段提示列
     ax.plot([xl2, xl2], [y0, y1], color="k", lw=lw * 0.8, zorder=51)
+    # 标签与值必须一一对应：之前 checked(审核) 落在「校对」格、审核格恒空、日期从不传
     labels = ["设计", "制图", "校对", "审核", "工艺", "标准化", "批准", "日期"]
-    vals = [designed, drawn, checked, "", "", "", approved, date]
+    vals = [designed, drawn, proofed, checked, process, standard, approved,
+            date or _today()]
     rh = tb_h / 8.0
     for i, lab in enumerate(labels):
         yy = y1 - (i + 1) * rh

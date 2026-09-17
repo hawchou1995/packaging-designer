@@ -1,0 +1,63 @@
+{
+  "scope": "offscreen programmatic buttons; dummy files; no geometry generation; no OS opening",
+  "root": "D:\\Tools\\tmp\\packapp\\export_e2e_20260917_214452_2b8c8b4b",
+  "python": "D:\\Tools\\venvs\\fefco0210\\Scripts\\python.exe",
+  "checks": [
+    {
+      "name": "nine_relevant_source_files_unchanged",
+      "pass": true
+    },
+    {
+      "name": "no_unhandled_qt_slot_errors",
+      "pass": true,
+      "errors": []
+    },
+    {
+      "name": "no_forbidden_external_or_outside_write_attempts",
+      "pass": false,
+      "attempts": [
+        [
+          "open",
+          "C:\\Users\\Admin\\AppData\\Local\\Temp\\_lh0zfs5"
+        ]
+      ]
+    }
+  ],
+  "exports": [],
+  "snapshots": {},
+  "open_requests": [],
+  "source_before": {
+    "app.py": "1ea1026637a5d237336dc3b13b2268917b0684f6db405b0cbdebc51ae677fa77",
+    "ui/pages.py": "9bab98f16268d7cc619706481d0b19d5234e5fd8db01fbc6f7dd8f3792eeee89",
+    "ui/settings.py": "486609d46f046aa8e0b0ecc856154777de7ae39a5e1e1108f1f9c19693a27486",
+    "ui/dialogs.py": "09b36177f96d62536604f7ae1dd5a4e96f9071b5011793e27d4d12b2bdb73d7f",
+    "ui/widgets.py": "aa29ad73347d18c5b818291866c78b30c770ed52908c20cbdf0ab2691d736530",
+    "ui/theme.py": "61c8dde9333d11a7aedfac5cbd95d8bacb9f227b2eba7e908498fa2fe049b1db",
+    "backend.py": "5bd524d9aa1fa9b474f4029ead967a48f8591292ec0c1b49a491f834a16c3ec0",
+    "price_lib.py": "914822264c656b66ecc017359281e6cde37b6706a71d557924ebd3f19c1a693d",
+    "flute_lib.py": "00d00b5e05713efc29b567f0b094747b1524869b31b57e4b13d0490e7419f1d3"
+  },
+  "fatal_error": "Traceback (most recent call last):\n  File \"D:\\Tools\\tmp\\packapp\\export_e2e_20260917_214452_2b8c8b4b\\export_e2e.py\", line 115, in <module>\n    import app as production\n  File \"D:\\Tools\\tmp\\packapp\\app.py\", line 38, in <module>\n    from pages import BlockPage, BoxPage, GridPage, SheetPage\n  File \"D:\\Tools\\tmp\\packapp\\ui\\pages.py\", line 24, in <module>\n    TMP_ROOT = os.path.join(tempfile.gettempdir(), \"PackagingDesigner\")\n                            ~~~~~~~~~~~~~~~~~~~^^\n  File \"C:\\Users\\Admin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\tempfile.py\", line 312, in gettempdir\n    return _os.fsdecode(_gettempdir())\n                        ~~~~~~~~~~~^^\n  File \"C:\\Users\\Admin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\tempfile.py\", line 305, in _gettempdir\n    tempdir = _get_default_tempdir()\n  File \"C:\\Users\\Admin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\tempfile.py\", line 204, in _get_default_tempdir\n    fd = _os.open(filename, _bin_openflags, 0o600)\n  File \"D:\\Tools\\tmp\\packapp\\export_e2e_20260917_214452_2b8c8b4b\\export_e2e.py\", line 50, in audit\n    raise RuntimeError('WRITE OUTSIDE ISOLATION: ' + str(path))\nRuntimeError: WRITE OUTSIDE ISOLATION: C:\\Users\\Admin\\AppData\\Local\\Temp\\_lh0zfs5\n",
+  "source_after": {
+    "app.py": "1ea1026637a5d237336dc3b13b2268917b0684f6db405b0cbdebc51ae677fa77",
+    "ui/pages.py": "9bab98f16268d7cc619706481d0b19d5234e5fd8db01fbc6f7dd8f3792eeee89",
+    "ui/settings.py": "486609d46f046aa8e0b0ecc856154777de7ae39a5e1e1108f1f9c19693a27486",
+    "ui/dialogs.py": "09b36177f96d62536604f7ae1dd5a4e96f9071b5011793e27d4d12b2bdb73d7f",
+    "ui/widgets.py": "aa29ad73347d18c5b818291866c78b30c770ed52908c20cbdf0ab2691d736530",
+    "ui/theme.py": "61c8dde9333d11a7aedfac5cbd95d8bacb9f227b2eba7e908498fa2fe049b1db",
+    "backend.py": "5bd524d9aa1fa9b474f4029ead967a48f8591292ec0c1b49a491f834a16c3ec0",
+    "price_lib.py": "914822264c656b66ecc017359281e6cde37b6706a71d557924ebd3f19c1a693d",
+    "flute_lib.py": "00d00b5e05713efc29b567f0b094747b1524869b31b57e4b13d0490e7419f1d3"
+  },
+  "summary": {
+    "checks": 3,
+    "passed": 2,
+    "failed_behavior_checks": [
+      "no_forbidden_external_or_outside_write_attempts"
+    ],
+    "fatal_error": true,
+    "os_open_verified": false,
+    "geometry_generation_tested": false,
+    "real_desktop_window_acceptance": false
+  }
+}
