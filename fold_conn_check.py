@@ -53,32 +53,28 @@ def run(tag, cfg):
 
     xs_l = gd._slots(d["margin_l"], d["slots_long"], d["pitch_l"], t)
     ys_w = gd._slots(d["margin_w"], d["slots_short"], d["pitch_w"], t)
-    fl_net = d.get("fold_len", 30.0)                # 折边净长（L 立边长度）
+    fl_net = d.get("fold_len", 30.0)                # 折边净长（立板高）
     flaps = []
-    # L 形折叠口径（用户 2026-09-18 复核）：折边在**容器内侧**、与卡体垂直，
-    # 宽 = 板厚 t（贴折弯线那段），长 = 净长 fl_net；折弯线 = 原卡端横跨板厚。
+    # 折叠后俯视（最终口径）：立板贴原卡端竖起，顶边 = 折弯线段**向容器内平移 fl_net**，
+    # 与折弯线同宽（横跨板厚）；顶边三条线；折弯线为虚线不计角点闭合。
     if d.get("fold_l"):
         for yc in ys_w:
-            sy = -1.0 if yc > p.W / 2.0 else 1.0
-            y0 = yc + sy * t / 2                    # 立边起点（折弯线外侧料面）
-            y1 = y0 + sy * fl_net                   # 立边外端（向容器内）
-            x0, x1 = 0.0, t                         # 左端立边（宽 = 板厚）
-            flaps.append(("长卡折边(左端)", (min(x0, x1), min(y0, y1)),
-                          (max(x0, x1), max(y0, y1)), (0.0, y0), (0.0, y1)))
-            x0, x1 = p.L - t, p.L
-            flaps.append(("长卡折边(右端)", (min(x0, x1), min(y0, y1)),
-                          (max(x0, x1), max(y0, y1)), (p.L, y0), (p.L, y1)))
+            y_a, y_b = yc - t / 2, yc + t / 2       # 折弯线横跨（与顶边同宽）
+            for xe, sgn in ((0.0, +1.0), (p.L, -1.0)):   # 左端向 +X、右端向 -X
+                x0t = xe + sgn * fl_net
+                x1t = xe + sgn * (fl_net + t)
+                x_lo, x_hi = min(x0t, x1t), max(x0t, x1t)
+                flaps.append(("长卡折边", (x_lo, min(y_a, y_b)),
+                              (x_hi, max(y_a, y_b)), (x_lo, y_a), (x_lo, y_b)))
     if d.get("fold_w"):
         for xc in xs_l:
-            sx = -1.0 if xc > p.L / 2.0 else 1.0
-            x0 = xc + sx * t / 2
-            x1 = x0 + sx * fl_net
-            y0, y1 = 0.0, t
-            flaps.append(("短卡折边(下端)", (min(x0, x1), min(y0, y1)),
-                          (max(x0, x1), max(y0, y1)), (x0, 0.0), (x1, 0.0)))
-            y0, y1 = p.W - t, p.W
-            flaps.append(("短卡折边(上端)", (min(x0, x1), min(y0, y1)),
-                          (max(x0, x1), max(y0, y1)), (x0, p.W), (x1, p.W)))
+            x_a, x_b = xc - t / 2, xc + t / 2
+            for ye, sgn in ((0.0, +1.0), (p.W, -1.0)):   # 下端向 +Y、上端向 -Y
+                y0t = ye + sgn * fl_net
+                y1t = ye + sgn * (fl_net + t)
+                y_lo, y_hi = min(y0t, y1t), max(y0t, y1t)
+                flaps.append(("短卡折边", (min(x_a, x_b), y_lo),
+                              (max(x_a, x_b), y_hi), (x_a, y_lo), (x_b, y_lo)))
 
     def has_end(pt, tol=0.4):
         tp = T(*pt)

@@ -131,11 +131,18 @@ def check_grid(boxes):
         pn = gc_n.Params(**cfg)
         po = gc_o.Params(**cfg)
         probs = []
-        diff("report", gc_n.report(pn), gc_o.report(po), probs, ignore=("st",))
+        # 折边是 v1.0.6 新增几何（旧基线没有）：fold 开启时 items 的端部段会被立板替代/截短，
+        # 属**有意变更**。基线比对关掉折边跑（fold_on=False），保证其余几何零回归；
+        # 折边自身的正确性由 fold_conn_check / _chk3d* 专检。
+        pn_f = gc_n.Params(**cfg, fold_on=False)
+        po = gc_o.Params(**cfg)                       # 旧版无折边参数
+        po_f = po                                     # 旧版几何=关折边的新版几何
+        diff("report", gc_n.report(pn), gc_o.report(po), probs, ignore=("st", "fold"))
         dn, do = gc_n.design(pn), gc_o.design(po)
-        diff("design", dn, do, probs, ignore=("st",))
-        diff("items_axo", gm_n.items(pn, dn, True), gm_o.items(po, do, True), probs)
-        diff("items", gm_n.items(pn, dn), gm_o.items(po, do), probs)
+        dn_f, do_f = gc_n.design(pn_f), gc_o.design(po_f)
+        diff("design", dn_f, do_f, probs, ignore=("st", "fold"))
+        diff("items_axo", gm_n.items(pn_f, dn_f, True), gm_o.items(po_f, do_f, True), probs)
+        diff("items", gm_n.items(pn_f, dn_f), gm_o.items(po_f, do_f), probs)
         if probs:
             ok = False
             print(f"  {cfg}  DIFF {len(probs)}:")
