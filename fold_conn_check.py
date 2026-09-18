@@ -29,16 +29,14 @@ def run(tag, cfg):
     gd = load("gd", os.path.join(HERE, "core", "grid_draw.py"))
     p = gc.Params(**cfg)
     _e, _r, d = gc.report(p)
-    t, fl = d["t"], d["fold_len"]
+    t = d["t"]
+    fl = d.get("fold_len_out", d["fold_len"])      # 展开口径 = 净长 + t
     if not (d.get("fold_l") or d.get("fold_w")):
         print(f"  {tag}: 无折边 → 跳过")
         return 0
     fig = gd.build_sheet(p, d)
     ax = [a for a in fig.get_axes() if a.get_zorder() < 50 and a.get_xlim()[1] > 1.5][0]
-    s = 1.0 / fig._scale_used
-    _fw = fl if d.get("fold_w") else 0.0
-    ROW1 = (264.0 - 36.0 * s - 2.0 * _fw * s) - p.W * s
-    PLX = 48.0
+    PLX, ROW1, s = fig._plan_T          # 复用图纸自己的俯视变换（避免两边各算一套坐标）
 
     def T(x, y):
         return (PLX + x * s, ROW1 + y * s)
@@ -56,20 +54,17 @@ def run(tag, cfg):
     xs_l = gd._slots(d["margin_l"], d["slots_long"], d["pitch_l"], t)
     ys_w = gd._slots(d["margin_w"], d["slots_short"], d["pitch_w"], t)
     flaps = []
+    # 新口径（用户 2026-09-18）：折边在**原卡端之外**，与卡体同宽 t，外伸 fl（= 净长 + t）
     if d.get("fold_l"):
         for yc in ys_w:
-            sy = -1.0 if yc > p.W / 2.0 else 1.0
-            y_att, y_out = yc + sy * t / 2, yc + sy * (t / 2 + fl)
-            for x_in in (0.0, p.L - t):
-                flaps.append(("长卡折边", (x_in, min(y_att, y_out)),
-                              (x_in + t, max(y_att, y_out)), (x_in, y_att), (x_in + t, y_att)))
+            y0, y1 = yc - t / 2, yc + t / 2
+            flaps.append(("长卡折边(左端)", (-fl, y0), (0.0, y1), (0.0, y0), (0.0, y1)))
+            flaps.append(("长卡折边(右端)", (p.L, y0), (p.L + fl, y1), (p.L, y0), (p.L, y1)))
     if d.get("fold_w"):
         for xc in xs_l:
-            sx = -1.0 if xc > p.L / 2.0 else 1.0
-            x_att, x_out = xc + sx * t / 2, xc + sx * (t / 2 + fl)
-            for y_in in (0.0, p.W - t):
-                flaps.append(("短卡折边", (min(x_att, x_out), y_in),
-                              (max(x_att, x_out), y_in + t), (x_att, y_in), (x_att, y_in + t)))
+            x0, x1 = xc - t / 2, xc + t / 2
+            flaps.append(("短卡折边(下端)", (x0, -fl), (x1, 0.0), (x0, 0.0), (x1, 0.0)))
+            flaps.append(("短卡折边(上端)", (x0, p.W), (x1, p.W + fl), (x0, p.W), (x1, p.W)))
 
     def has_end(pt, tol=0.4):
         tp = T(*pt)

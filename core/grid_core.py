@@ -104,22 +104,25 @@ def design(p: Params):
     d["area_seps"] = d["seps_total"] * p.L * p.W / 1e6
     d["margin_ok"] = (margin_l >= MARGIN_MIN - 1e-9) and (margin_w >= MARGIN_MIN - 1e-9)
 
-    # ---- 两端折边：边距 ≤ fold_thr 触发；折边是纸板延伸（展开长 += 2×fold_len）----
+    # ---- 两端折边：边距 ≤ fold_thr 触发 ----
+    # 口径（用户 2026-09-18）：**折弯线就在原卡端位置**；折弯线之外再延伸「净长 + 板厚」为折边
+    #   （折 90° 时外皮多吃一个板厚，供应商才折得出净长 30 的立边）
     fl, fw = float(p.fold_len), float(p.fold_thr)
     fold_l = bool(p.fold_on) and margin_l <= fw + 1e-9
     fold_w = bool(p.fold_on) and margin_w <= fw + 1e-9
-    blank_L = p.L + (2 * fl if fold_l else 0.0)
-    blank_W = p.W + (2 * fl if fold_w else 0.0)
-    d.update(fold_on=bool(p.fold_on), fold_thr=fw, fold_len=fl,
+    fl_out = fl + t
+    blank_L = p.L + (2 * fl_out if fold_l else 0.0)
+    blank_W = p.W + (2 * fl_out if fold_w else 0.0)
+    d.update(fold_on=bool(p.fold_on), fold_thr=fw, fold_len=fl, fold_len_out=fl_out,
              fold_l=fold_l, fold_w=fold_w, blank_L=blank_L, blank_W=blank_W,
-             fold_lines_L=([fl, blank_L - fl] if fold_l else []),
-             fold_lines_W=([fl, blank_W - fl] if fold_w else []))
-    # 折边带来的额外用纸（几何口径）
+             fold_lines_L=([fl_out, blank_L - fl_out] if fold_l else []),
+             fold_lines_W=([fl_out, blank_W - fl_out] if fold_w else []))
+    # 折边带来的额外用纸（几何口径，按展开长）
     extra = 0.0
     if fold_l:
-        extra += d["cards_long_total"] * 2 * fl * cell_h
+        extra += d["cards_long_total"] * 2 * fl_out * cell_h
     if fold_w:
-        extra += d["cards_short_total"] * 2 * fl * cell_h
+        extra += d["cards_short_total"] * 2 * fl_out * cell_h
     d["fold_extra_area"] = extra / 1e6
     return d
 

@@ -39,7 +39,7 @@ ax = [a for a in fig.get_axes() if a.get_zorder() < 50 and a.get_xlim()[1] > 1.5
 
 # 俯视图坐标变换（与 grid_draw 内部一致）
 t = d["t"]
-fl = d["fold_len"]
+fl = d.get("fold_len_out", d["fold_len"])          # 展开口径 = 净长 + t
 s = 1.0 / fig._scale_used
 _fw = fl if d.get("fold_w") else 0.0
 ROW1 = (264.0 - 36.0 * s - 2.0 * _fw * s) - p.W * s

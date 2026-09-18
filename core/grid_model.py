@@ -49,25 +49,17 @@ def items_layer(p, d):
                 add(f"L{j:02d}_f{a:07.1f}", (w, t, Hc), (cx, y0 + yc, Hc / 2))
             else:
                 add(f"L{j:02d}_s{a:07.1f}", (w, t, Hc / 2), (cx, y0 + yc, Hc / 4))
-    # 折边实体：绕竖直折弯线折 90° → 垂直竖板（30 沿箱壁方向 × Hc 高 × t 厚）
-    fl = d.get("fold_len", 0.0)
-    # 折边实体：附着在刀卡**料面**（yc±t/2 / xc±t/2），向外折 fl，厚 t（与俯视图画法一致）
-    if d.get("fold_l"):                       # 长卡两端（沿 X），折边朝 Y 中线折
+    # 折边实体（用户 2026-09-18 口径）：折边在**原卡端之外**，与卡体同宽 t，外伸 fl（= 净长 30 + t），
+    # 折 90° 后成为贴着箱壁方向的立板。俯视图/侧视图/3D 三处口径一致。
+    fl = d.get("fold_len_out", d.get("fold_len", 0.0))
+    if d.get("fold_l"):                       # 长卡两端（沿 X 两端之外）
         for j, yc in enumerate(ys):
-            sy = -1.0 if yc > W / 2.0 else 1.0
-            y_att = yc + sy * t / 2
-            add(f"LF{j:02d}_a", (t, fl, Hc),
-                (x0 + t / 2, y0 + y_att + sy * fl / 2, Hc / 2))
-            add(f"LF{j:02d}_b", (t, fl, Hc),
-                (x0 + L - t / 2, y0 + y_att + sy * fl / 2, Hc / 2))
-    if d.get("fold_w"):                       # 短卡两端（沿 Y），折边朝 X 中线折
+            add(f"LF{j:02d}_a", (fl, t, Hc), (x0 - fl / 2, y0 + yc, Hc / 2))
+            add(f"LF{j:02d}_b", (fl, t, Hc), (x0 + L + fl / 2, y0 + yc, Hc / 2))
+    if d.get("fold_w"):                       # 短卡两端（沿 Y 两端之外）
         for i, xc in enumerate(xs):
-            sx = -1.0 if xc > L / 2.0 else 1.0
-            x_att = xc + sx * t / 2
-            add(f"SF{i:02d}_a", (fl, t, Hc),
-                (x0 + x_att + sx * fl / 2, y0 + t / 2, Hc / 2))
-            add(f"SF{i:02d}_b", (fl, t, Hc),
-                (x0 + x_att + sx * fl / 2, y0 + W - t / 2, Hc / 2))
+            add(f"SF{i:02d}_a", (t, fl, Hc), (x0 + xc, y0 - fl / 2, Hc / 2))
+            add(f"SF{i:02d}_b", (t, fl, Hc), (x0 + xc, y0 + W + fl / 2, Hc / 2))
     # 短卡（沿 Y），槽自底向上（槽段保留上半幅）
     for i, xc in enumerate(xs):
         for (a, b, is_slot) in _card_segments(W, ys, t):

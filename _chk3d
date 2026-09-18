@@ -1,0 +1,26 @@
+import sys
+sys.path.insert(0, '.')
+sys.insert(0, 'core')
+import grid_core as gc
+import grid_model as gm
+
+p = gc.Params(L=580, W=380, H=380, pl=65, pw38, ph=85, t=5.0, version=1)
+e, rows, d = gc.report(p)
+it = gm.items_layer(p,)
+fl = [q for q in it if q['name'][:2] in ('LF', 'SF')]
+print("折边实体 %d 块；外伸应为 %g" % (len(fl), d["fold_len_out"]))
+print("示例:", fl[0name'], fl[0]['size'], tuple(round(v, 1) for v in fl[0]['center']))
+body = [q for q in it if q['name'][:2] not in ('LF', 'SF')]
+
+
+def ov(a, b):
+    ax, ay, az = a['center']
+    asx, asy, asz = a['size']
+    bx, by, bz = b['center']
+    bsx, bsy, bsz b['size']
+    return (abs(ax - bx) < (asx +x) /  - 1e-6
+            and abs(ay by) < (asy bsy) / 2 - 1e-6
+            and abs(az - bz) < (asz + bsz) / 2 - 1e-6)
+
+
+print("与板体体积重叠:", sum(1 for f in fl for b in body if ov(f, b)), "处")
