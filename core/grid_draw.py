@@ -81,41 +81,72 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
         ax.plot([x0, x1], [y0, y1], color="k", lw=0.7, zorder=11)
     fl = d.get("fold_len", 0.0)
     fold_l, fold_w = bool(d.get("fold_l")), bool(d.get("fold_w"))
-    # 长卡（上开槽）：棱线在交叉处断开（槽口），两端封口（板厚 5）
+    # 折边几何（俯视=折叠后状态）：
+    #   折边贴在同一张板上、绕**竖直折弯线**折 90°，附着面 = 刀卡的**料面**（不是中心线）；
+    #   折弯线画在「卡面 × 折边宽度」那一段（t 长），卡面其余部分才是实线棱线；
+    #   外轮廓从卡的另一侧料面 → 卡端面 → 折边侧边 → 折边外端 一条线连通，不留缝。
+    def cut(x0d, y0d, x1d, y1d):
+        (a, b), (c, e) = T(x0d, y0d), T(x1d, y1d)
+        ax.plot([a, c], [b, e], color="k", lw=0.7, zorder=11)
+
+    def foldln(x0d, y0d, x1d, y1d):
+        (a, b), (c, e) = T(x0d, y0d), T(x1d, y1d)
+        ax.plot([a, c], [b, e], **FOLD_STYLE)
+
+    # 长卡（上开槽）：棱线在交叉处断开（槽口）
     for yc in ys_w:
-        for e in (yc - t / 2, yc + t / 2):
+        y_near, y_far = yc - t / 2, yc + t / 2          # 两侧料面
+        sy = -1.0 if yc > p.W / 2.0 else 1.0            # 折边朝容器中线
+        y_att = yc + sy * t / 2                         # 折边附着面
+        y_out = y_att + sy * fl                         # 折边外端
+        for e in (y_near, y_far):
+            is_att = abs(e - y_att) < 1e-9
             prev = 0.0
             for xc in xs_l:
-                line(prev, xc - t / 2, True, e); prev = xc + t / 2
-            line(prev, p.L, True, e)
+                x_in, x_out = xc - t / 2, xc + t / 2
+                if not is_att:
+                    line(prev, x_in, True, e)
+                else:                                    # 附着面：两端折边段跳过（后面画折弯线）
+                    seg_a, seg_b = max(prev, t), min(x_in, p.L - t)
+                    if seg_b > seg_a:
+                        line(seg_a, seg_b, True, e)
+                prev = x_out
+            if not is_att:
+                line(prev, p.L, True, e)
+            else:
+                seg_a, seg_b = max(prev, t), p.L - t
+                if seg_b > seg_a:
+                    line(seg_a, seg_b, True, e)
         if fold_l:
-            # 折边（折叠后）：30×t 矩形朝 Y 中线折（保证落在箱内）；卡端边=折弯线（点划线）
-            sy = -1.0 if yc > p.W / 2.0 else 1.0
-            ya, yb = (yc, yc + sy * fl) if sy > 0 else (yc - fl, yc)
             for xe in (0.0, p.L):
-                x0, x1 = T(xe, 0)[0], T(xe + t, 0)[0]
-                y0, y1 = T(0, ya)[1], T(0, yb)[1]
-                ax.plot([x0, x0], [y0, y1], color="k", lw=0.7, zorder=11)
-                ax.plot([x1, x1], [y0, y1], color="k", lw=0.7, zorder=11)
-                ax.plot([x0, x1], [y1, y1] if sy > 0 else [y1, y1], color="k", lw=0.7, zorder=11)
-                ax.plot([x0, x1], [y0, y0], **FOLD_STYLE)     # 折弯线（卡端边）
+                x_in = xe if xe == 0.0 else xe - t      # 折边占卡端的 t 段
+                cut(x_in, y_near, x_in, y_far)           # 卡端面（可见端面，轮廓起点）
+                cut(x_in, y_att, x_in, y_out)           # 折边侧边（与卡端面连通）
+                cut(x_in + t, y_att, x_in + t, y_out)   # 折边另一侧边（与附着面连通）
+                cut(x_in, y_out, x_in + t, y_out)       # 折边外端（裁切/可见边）
+                foldln(x_in, y_att, x_in + t, y_att)    # 折弯线（t 长，画在料面上）
         else:
             line(yc - t / 2, yc + t / 2, False, 0.0)      # 左端封口
             line(yc - t / 2, yc + t / 2, False, p.L)      # 右端封口
-    # 短卡（下开槽）：俯视棱线连续（上表面完整），两端封口
+    # 短卡（下开槽）：俯视棱线连续（上表面完整）
     for xc in xs_l:
-        for e in (xc - t / 2, xc + t / 2):
-            line(0.0, p.W, False, e)
+        x_near, x_far = xc - t / 2, xc + t / 2
+        sx = -1.0 if xc > p.L / 2.0 else 1.0
+        x_att = xc + sx * t / 2
+        x_out = x_att + sx * fl
+        for e in (x_near, x_far):
+            if abs(e - x_att) < 1e-9:                    # 附着面：折边段改用折弯线
+                cut(e, t, e, p.W - t) if p.W - t > t else None
+            else:
+                line(0.0, p.W, False, e)
         if fold_w:
-            sx = -1.0 if xc > p.L / 2.0 else 1.0
-            xa, xb = (xc, xc + sx * fl) if sx > 0 else (xc - fl, xc)
             for ye in (0.0, p.W):
-                x0, x1 = T(xa, 0)[0], T(xb, 0)[0]
-                y0, y1 = T(0, ye)[1], T(0, ye + t)[1]
-                ax.plot([x0, x1], [y0, y0], color="k", lw=0.7, zorder=11)
-                ax.plot([x0, x1], [y1, y1], color="k", lw=0.7, zorder=11)
-                ax.plot([x1, x1], [y0, y1], color="k", lw=0.7, zorder=11)
-                ax.plot([x0, x0], [y0, y1], **FOLD_STYLE)     # 折弯线（卡端边）
+                y_in = ye if ye == 0.0 else ye - t
+                cut(x_near, y_in, x_far, y_in)          # 卡端面（可见端面，轮廓起点）
+                cut(x_att, y_in, x_out, y_in)           # 折边边（与卡端面连通）
+                cut(x_att, y_in + t, x_out, y_in + t)   # 折边另一侧边
+                cut(x_out, y_in, x_out, y_in + t)       # 折边外端
+                foldln(x_att, y_in, x_att, y_in + t)    # 折弯线（t 长）
         else:
             line(xc - t / 2, xc + t / 2, True, 0.0)
             line(xc - t / 2, xc + t / 2, True, p.W)

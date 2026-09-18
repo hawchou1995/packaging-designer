@@ -216,5 +216,60 @@ def main():
         plt.close(fig)
 
 
+
+def connectivity_check(fig, tag, tol=0.35):
+    """俯视图「线要连起来」：每个线段端点必须与另一条线段共享端点（容差 tol 纸面 mm）。
+
+    折弯线（点划线）不参与端点配对——它按制图惯例与料边相接即可，不能因虚线相位误判。
+    """
+    axes = _content_axes(fig)
+    segs = []
+    for ax in axes:
+        for ln in ax.lines:
+            if str(ln.get_linestyle()) not in ("-", "solid"):
+                continue
+            xs, ys = ln.get_xdata(), ln.get_ydata()
+            for i in range(len(xs) - 1):
+                p, q = (xs[i], ys[i]), (xs[i + 1], ys[i + 1])
+                if math.dist(p, q) > 0.5:
+                    segs.append((p, q))
+    if not segs:
+        return [], 0
+    ends = []
+    for p, q in segs:
+        ends.append(p)
+        ends.append(q)
+    lonely = []
+    for i, e in enumerate(ends):
+        hit = 0
+        for j, o in enumerate(ends):
+            if i // 2 == j // 2:
+                continue
+            if math.dist(e, o) <= tol:
+                hit += 1
+        # 端点落在另一条线段的“中间”（T 形接头）也算连通
+        for j, (p, q) in enumerate(segs):
+            if j == i // 2:
+                continue
+            if _pt_on_seg(e, p, q, tol):
+                hit += 1
+        if hit == 0:
+            lonely.append((tag, round(e[0], 1), round(e[1], 1)))
+    return lonely, len(segs)
+
+
+def _pt_on_seg(pt, a, b, tol):
+    ax_, ay = a
+    bx, by = b
+    dx, dy = bx - ax_, by - ay
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-9:
+        return False
+    t = ((pt[0] - ax_) * dx + (pt[1] - ay) * dy) / L2
+    if t <= 0.02 or t >= 0.98:
+        return False
+    px, py = ax_ + t * dx, ay + t * dy
+    return math.dist((px, py), pt) <= tol
+
 if __name__ == "__main__":
     main()
