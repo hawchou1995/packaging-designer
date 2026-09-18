@@ -149,7 +149,7 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
           "展开宽 " + g(chain_y[-1] - chain_y[0]))
 
     # callouts: inner flap depth + slot width
-    dim_v(ax, T(0, gd["Y1"])[1], T(0, gd["Yt_i"])[1], T(gd["X2a"] - 45, 0)[0], "内摇盖深 " + g(p.fi))
+    dim_v(ax, T(0, gd["Y1"])[1], T(0, gd["Yt_i"])[1], T(gd["X2a"] - 8, 0)[0], "内摇盖深 " + g(p.fi), off=-3.4)
     dim_h(ax, T(gd["X4a"], 0)[0], T(gd["X4b"], 0)[0], T(0, gd["Yt_o"])[1] + 6.0, "开槽宽 " + g(p.slot_w))
 
     # title

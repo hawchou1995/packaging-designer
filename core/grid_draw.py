@@ -7,6 +7,8 @@
   B 侧视图一（右上）：短板卡旋转 90°（高横向、长竖向、槽口朝左），标注 高 / 槽深
   C 侧视图二（左下）：长刀卡自然向（长横向、高竖向、槽自顶向下），标注 高 / 槽深
 """
+import math
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -18,11 +20,30 @@ from grid_core import PAD_LABEL
 
 # 折弯线线型（点划线）：GB 机械制图惯例
 FOLD_STYLE = dict(color="k", lw=0.5, ls=(0, (6, 2, 1, 2)), zorder=12)
-from grid_model import items as model_items, _slot_centers
+# 短折弯线用（一个周期 ≈ 4.9pt，1.7mm 的线段也能看出「划—点—划」）
+FOLD_STYLE_S = dict(color="k", lw=0.5, ls=(0, (2.2, 1.0, 0.7, 1.0)), zorder=12)
+from grid_model import items as model_items, _slot_centers, _fold_tabs
 
 
 def _slots(margin, n, pitch, t):
     return _slot_centers(margin, n, pitch, t)
+
+
+def _wrap_text(s, width_mm, fs):
+    """按估算字宽折行（中文字宽 ≈ fs·25.4/72，西文 ≈ 0.55×）。图幅上不允许整行铺满。"""
+    cjk = fs * 25.4 / 72.0
+    asc = cjk * 0.55
+    out, cur, w = [], "", 0.0
+    for ch in s:
+        cw = cjk if ord(ch) > 0x2000 else asc
+        if cur and w + cw > width_mm:
+            out.append(cur)
+            cur, w = "", 0.0
+        cur += ch
+        w += cw
+    if cur:
+        out.append(cur)
+    return out or [""]
 
 
 def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
@@ -34,9 +55,13 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
         scale = float(scale)
     else:
         t_, Hc_ = d["t"], d["cell_h"]
-        s_w = _ps(p.L + Hc_, 1.0, 192.0, 1e9, _SC)              # 横向：L+Hc ≤ 192
-        s_h = _ps(1.0, p.W + Hc_ + 38.0, 1e9, 149.4, _SC)       # 纵向：W+Hc+38 侧位余量
-        scale = max(s_w, s_h)
+        _fx = (d.get("fold_len_out", d.get("fold_len", 0.0))
+               if (d.get("fold_l") or d.get("fold_w")) else 0.0)
+        s_w1 = _ps(p.L + Hc_ + _fx, 1.0, 192.0, 1e9, _SC)       # L+Hc+折边 ≤ 192
+        # B 视图说明文字（起点 BX、宽约 41）右端 ≤ 258（轴测区左界）→ 长边预算收到 155
+        s_w2 = _ps(p.L + _fx, 1.0, 155.0, 1e9, _SC)
+        s_h = _ps(1.0, p.W + Hc_ + 38.0 + _fx, 1e9, 149.4, _SC)  # 纵向：W+Hc+38+折边余量
+        scale = max(s_w1, s_w2, s_h)
     fam, fpath = _font_family()
     fig = plt.figure(figsize=(page[0] / 25.4, page[1] / 25.4))
     vtxt = "V1 长对长" if d["version"] == 1 else "V2 长对宽"
@@ -62,9 +87,15 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
     s = 1.0 / scale
     t, Hc = d["t"], d["cell_h"]
     fig._scale_used, fig._scale_auto = scale, not manual
+    _fl_out = d.get("fold_len_out", d.get("fold_len", 0.0))
+    fwc = _fl_out if d.get("fold_w") else 0.0    # 短卡折边：B 视图两端延长（沿纸面纵向）
+    flc = _fl_out if d.get("fold_l") else 0.0    # 长卡折边：C 视图两端延长（沿纸面横向）
     # B（短卡侧视）按展开画：两端各 +折边，纵向会高出 p.W → 版面预算里先把这段让出来
-    _fw_lay = d.get("fold_len_out", d["fold_len"]) if d.get("fold_w") else 0.0
-    TOP = 264.0 - 36.0 * s - 2.0 * _fw_lay * s   # B 视图上方两条尺寸线占位
+    _fw_lay = fwc
+    # 俯视图上方的纵向预算（**纸面绝对值**，约 17mm）：尺寸链带 + 总长/总宽尺寸 + 数字 + 视图名。
+    # 原来按比例 36·s，小比例时几乎归零，尺寸数字会顶到图幅标题行 —— 用户 2026-09-18 反馈。
+    # 另需保证 B 视图（短卡侧视）顶部不越过 264。
+    TOP = 264.0 - max(36.0 * s, 17.0, fwc * s + 1.0)
     ROW1 = TOP - p.W * s                   # 俯视图/短卡视图底边
     ROW2 = ROW1 - 24.0 - Hc * s            # 长卡视图底边（含俯视图标注带）
 
@@ -87,153 +118,169 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
 
     def foldln(x0d, y0d, x1d, y1d):
         (a, b), (c, e) = T(x0d, y0d), T(x1d, y1d)
-        ax.plot([a, c], [b, e], **FOLD_STYLE)
+        # 折边根部的折弯线在俯视图里只有板厚 t 长（1:3 时约 1.7mm）→ 标准点划线的
+        # 一个周期（6+2+1+2 pt）都画不满，会被看成实线；短线段改用加密点划线。
+        st = FOLD_STYLE if math.hypot(c - a, e - b) > 3.2 else FOLD_STYLE_S
+        ax.plot([a, c], [b, e], **st)
 
-    fl = d.get("fold_len_out", d.get("fold_len", 0.0))   # 折边外伸（展开）= 净长 30 + 板厚 t
-    fl_net = d.get("fold_len", 30.0)                     # 折边净长（折叠后立边长）
+    fl_net = d.get("fold_len", 30.0)                     # 折边净长（折叠后立边，垂直方向量）
+    fl_out = d.get("fold_len_out", fl_net)               # 展开料长 = 净长 + 板厚 t（折弯补偿）
     fold_l, fold_w = bool(d.get("fold_l")), bool(d.get("fold_w"))
-    # 折边几何（俯视 = **折叠后状态**，2026-09-18 定案+当日三处修正）：
-    #   折边折 90° 后是垂直立板，俯视只看到它的**顶边**——宽 = 板厚 t 的窄条，
-    #   位于**距原卡端 fl_net（净长 30）**处（立板向容器内倒下 30 后的顶视位置）。
-    #   · 折弯线（虚线）= 原卡端那段，横跨板厚；卡端不画实线（材料连续）
-    #   · 立边顶边三条实线全部落在偏移后的窄条上，不得伸进卡体内部
-    #     （用户指出：贴着卡端的那截短连接线要裁掉）
-    #   立边顶边 = 折弯线段**向容器内平移 fl_net**（与折弯线同宽 t），不伸进卡体
-    for yc in ys_w:
-        y_near, y_far = yc - t / 2, yc + t / 2          # 折弯线横跨的宽度
+    # 折边几何（**折叠后状态**，用户 2026-09-18 定案）：
+    #   · 折边 = 卡端折 90° 的竖板，**与刀卡本体垂直**：长卡两端沿 Y 伸出、短卡两端沿 X 伸出；
+    #     俯视投影 = 卡端的直角“L”（本体棱线 + 垂直短条），不是本体的延长线；
+    #   · 沿卡长方向只占一个板厚 t（自卡端向内，不越出卡端）；
+    #   · 折向取容器中心侧 → 折边恒在容器内，不会捅出箱壁。
+    tabs = _fold_tabs(p, d)
+    # 折弯线（折边根部，= fold_edge 指定的那条边）在本体棱线上的占位。
+    # 本体棱线在该区间必须断开，否则实线会把点划线的折弯线盖住（看起来像裁切）。
+    span_l, span_s = {}, {}
+    for tx0, tx1, ty0, ty1, is_long, fe in tabs:
+        if is_long:
+            span_l.setdefault(round(ty0 if fe == "y0" else ty1, 6), []).append((tx0, tx1))
+        else:
+            span_s.setdefault(round(tx0 if fe == "x0" else tx1, 6), []).append((ty0, ty1))
+
+    def _seg(a, b, horiz, fx, gaps):
+        """沿 a→b 画线，遇 gaps（同方向区间）断开。"""
+        prev = a
+        for (g0, g1) in sorted(gaps):
+            if g1 <= prev + 1e-9:
+                continue
+            if g0 >= b - 1e-9:
+                break
+            if g0 > prev + 1e-9:
+                line(prev, g0, horiz, fx)
+            prev = max(prev, g1)
+        if prev < b - 1e-9:
+            line(prev, b, horiz, fx)
+
+    for yc in ys_w:                                      # 长卡（上开槽）
+        y_near, y_far = yc - t / 2, yc + t / 2
         for e in (y_near, y_far):
-            prev = 0.0
-            for xc in xs_l:
-                line(prev, xc - t / 2, True, e)
-                prev = xc + t / 2
-            line(prev, p.L, True, e)
-        if fold_l:
-            for xe, s_dir in ((0.0, +1.0), (p.L, -1.0)):   # 左端向 +X、右端向 -X
-                foldln(xe, y_near, xe, y_far)              # 折弯线（原卡端，横跨板厚）
-                x0t = xe + s_dir * fl_net                  # 顶边近端（距折弯线 30）
-                x1t = xe + s_dir * (fl_net + t)            # 顶边远端
-                x_lo, x_hi = min(x0t, x1t), max(x0t, x1t)
-                cut(x_lo, y_near, x_hi, y_near)            # 顶边一侧
-                cut(x_lo, y_far, x_hi, y_far)              # 顶边另一侧
-                cut(x_hi, y_near, x_hi, y_far)             # 立边外端（中线侧竖边）
-        else:
-            line(yc - t / 2, yc + t / 2, False, 0.0)
-            line(yc - t / 2, yc + t / 2, False, p.L)
-    # 短卡（下开槽）：立板顶边 = 折弯线段**向容器内平移 fl_net**（与折弯线同宽 t）
-    for xc in xs_l:
-        x_near, x_far = xc - t / 2, xc + t / 2          # 折弯线横跨的宽度
+            gaps = [(xc - t / 2, xc + t / 2) for xc in xs_l]
+            gaps += span_l.get(round(e, 6), [])
+            _seg(0.0, p.L, True, e, gaps)
+        line(y_near, y_far, False, 0.0)                  # 卡端面（折弯处的转角棱）
+        line(y_near, y_far, False, p.L)
+    for xc in xs_l:                                      # 短卡（下开槽）
+        x_near, x_far = xc - t / 2, xc + t / 2
         for e in (x_near, x_far):
-            line(0.0, p.W, False, e)
-        if fold_w:
-            for ye, s_dir in ((0.0, +1.0), (p.W, -1.0)):   # 下端向 +Y、上端向 -Y
-                foldln(x_near, ye, x_far, ye)              # 折弯线（原卡端，横跨板厚）
-                y0t = ye + s_dir * fl_net                  # 顶边近端（距折弯线 30）
-                y1t = ye + s_dir * (fl_net + t)            # 顶边远端
-                y_lo, y_hi = min(y0t, y1t), max(y0t, y1t)
-                cut(x_near, y_lo, x_far, y_lo)             # 顶边一侧
-                cut(x_near, y_hi, x_far, y_hi)             # 顶边另一侧
-                cut(x_far, y_lo, x_far, y_hi)              # 立边外端（中线侧竖边）
-        else:
-            line(xc - t / 2, xc + t / 2, True, 0.0)
-            line(xc - t / 2, xc + t / 2, True, p.W)
-    dim_h(ax, T(0, p.W + 22)[0], T(p.L, p.W + 22)[0], T(0, p.W + 22)[1], f"{p.L:g}", off=1.5)
-    dim_v(ax, T(0, 0)[1], T(0, p.W)[1], T(-26, 0)[0], f"{p.W:g}", off=1.5)
+            _seg(0.0, p.W, False, e, span_s.get(round(e, 6), []))
+        line(x_near, x_far, True, 0.0)
+        line(x_near, x_far, True, p.W)
+    for tx0, tx1, ty0, ty1, is_long, fold_edge in tabs:
+        # 折边竖板投影（俯视）：**根部（本体料面侧）那条边 = 折弯线 → 点划线**；
+        # 其余三边（折边外端 = 展开料自由边、以及两条板厚投影边）= 裁切边 → 实线。
+        # 用户 2026-09-18：「折边折叠处改为虚线（折弯线），实线意味着裁切，制作时就是裁断的」。
+        edges = {"x0": (tx0, ty0, tx0, ty1), "x1": (tx1, ty0, tx1, ty1),
+                 "y0": (tx0, ty0, tx1, ty0), "y1": (tx0, ty1, tx1, ty1)}
+        for key, (a, b, c, e) in edges.items():
+            (foldln if key == fold_edge else cut)(a, b, c, e)
+    # 尺寸链带（边距 / 板厚 / 格距）：距俯视图 6mm（按比例）→ 标签写在线下方
     yb = T(0, p.W + 6)[1]
     dim_h(ax, T(0, p.W + 6)[0], T(d["margin_l"], p.W + 6)[0], yb, f"{d['margin_l']:g}")
-    dim_h(ax, T(d["margin_l"], p.W + 6)[0], T(d["margin_l"] + t, p.W + 6)[0], yb, f"{t:g}", off=4.5)
+    dim_h(ax, T(d["margin_l"], p.W + 6)[0], T(d["margin_l"] + t, p.W + 6)[0], yb, f"{t:g}", off=4.6)
     dim_h(ax, T(d["margin_l"] + t, p.W + 6)[0], T(d["margin_l"] + t + d["cell_l"], p.W + 6)[0],
           yb, f"{d['cell_l']:g}")
-    xl = T(-14, 0)[0]
-    dim_v(ax, T(-14, 0)[1], T(-14, d["margin_w"])[1], xl, f"{d['margin_w']:g}", off=0.0)
-    dim_v(ax, T(-14, d["margin_w"])[1], T(-14, d["margin_w"] + t)[1], xl, f"{t:g}", off=-5.5)
-    dim_v(ax, T(-14, d["margin_w"] + t)[1], T(-14, d["margin_w"] + t + d["cell_w"])[1], xl,
+    # 总长尺寸：与尺寸链带用**纸面绝对 9mm** 间距（原来按比例 16·s，小比例时两条线挤在一起，
+    # 边距/格距的数字会压在总长尺寸线上 —— 用户 2026-09-18 反馈的「标注干涉」）。
+    dim_h(ax, T(0, p.W + 6)[0], T(p.L, p.W + 6)[0], yb + 9.0, f"{p.L:g}", off=1.5)
+    # 总宽尺寸 + 尺寸链带：横向间距改为**纸面绝对值**（原来 26·s / 14·s 随比例漂移，
+    # 窄板厚（t=5）的「5」字会飘到总宽尺寸线上 —— 用户 2026-09-18 反馈的「标注干涉」）。
+    dim_v(ax, T(0, 0)[1], T(0, p.W)[1], T(0, 0)[0] - 14.0, f"{p.W:g}", off=1.5)
+    xl = T(0, 0)[0] - 7.0
+    dim_v(ax, T(0, 0)[1], T(0, d["margin_w"])[1], xl, f"{d['margin_w']:g}", off=0.0)
+    dim_v(ax, T(0, d["margin_w"])[1], T(0, d["margin_w"] + t)[1], xl, f"{t:g}", off=-5.5)
+    dim_v(ax, T(0, d["margin_w"] + t)[1], T(0, d["margin_w"] + t + d["cell_w"])[1], xl,
           f"{d['cell_w']:g}", off=0.0)
     _ftxt = ""
     if fold_l or fold_w:
         _which = ("长卡两端 + 短卡两端" if (fold_l and fold_w)
                   else "短卡两端" if fold_w else "长卡两端")
-        _ftxt = (f" · {_which} 折边（立边净长 {d.get('fold_len', 30):g}，虚线=折弯线在原卡端，"
-                 f"折 90° 向容器内）")
-    ax.text(T(p.L / 2, 0)[0], T(0, p.W)[1] + 8.0,
+        _ftxt = (f" · {_which}各 {fl_net:g} 折边（折 90° 与刀卡垂直，俯视为卡端直角，"
+                 f"展开料端部 {fl_out:g} = {fl_net:g}+t）")
+    # 视图名排在**尺寸带之上**（6·s + 16mm），否则会落在总长尺寸线上
+    ax.text(T(p.L / 2, 0)[0], T(0, p.W)[1] + 6.0 * s + 16.0,
             f"网格俯视图（{d['n_l']}×{d['n_w']} 格 × {d['layers']} 层）{_ftxt}",
             fontsize=8, ha="center", va="bottom")
 
     # ---------------- B 短卡侧视图（右上，旋转 90°：高横向 / 长竖向 / 槽口朝左） ----------------
-    # 用户口径：底图 = 无折边侧视图；原两端的**端面竖线改虚线（折弯线）**；
-    # 折弯线之外再外伸 fl（= 净长 30 + t），高度与刀卡相同。
-    BX, BY = 48.0 + p.L * s + 12.0, ROW1
+    # 按**展开料**画（用户口径）：卡体两端各延长 fl_out（= 净长 + 板厚）、同高；原卡端 = 折弯线（点划线）；
+    # 轮廓闭合（长边 + 两端封口）；高/槽深标注排在图形下方（折边之外），不压图线。
+    BX, BY = 48.0 + (p.L + flc) * s + 12.0, ROW1
     Tb = mk(BX, BY)
     sc = _slots(d["margin_w"], d["slots_short"], d["pitch_w"], t)
-    fw = fl if d.get("fold_w") else 0.0                 # 折边外伸（展开）
-    y_a, y_b = (-fw, p.W + fw) if fw else (0.0, p.W)    # 展开后的两端
-    # 顶边 / 底边（贯通，含折边段）
-    ax.plot(*zip(Tb(Hc, y_a), Tb(Hc, y_b)), color="k", lw=0.8)
-    ax.plot(*zip(Tb(0, y_a), Tb(Hc, y_a)), color="k", lw=0.8)
-    ax.plot(*zip(Tb(0, y_b), Tb(Hc, y_b)), color="k", lw=0.8)
-    # 槽口轮廓（原卡体范围）
-    prev = p.W
-    for yc in reversed(sc):
-        ax.plot(*zip(Tb(0, prev), Tb(0, yc + t / 2)), color="k", lw=0.8)
-        ax.plot(*zip(Tb(0, yc + t / 2), Tb(Hc / 2, yc + t / 2), Tb(Hc / 2, yc - t / 2),
-                     Tb(0, yc - t / 2)), color="k", lw=0.8)
-        prev = yc - t / 2
-    ax.plot(*zip(Tb(0, prev), Tb(0, 0)), color="k", lw=0.8)
-    # 折边：上下长边已贯通；补折弯线（原卡端，虚线）
-    if fw:
-        for ye in (0.0, p.W):
-            ax.plot(*zip(Tb(0, ye), Tb(Hc, ye)), **FOLD_STYLE)      # 折弯线（原卡端）
-        # 折边端部封口：外伸段两端的可见竖直端边
-        ax.plot(*zip(Tb(0, y_a), Tb(Hc, y_a)), color="k", lw=0.8)
-        ax.plot(*zip(Tb(0, y_b), Tb(Hc, y_b)), color="k", lw=0.8)
-        # 35 标注挂到折边外端外侧（-14），避开折弯线区域
-        dim_v(ax, Tb(0, 0)[1], Tb(0, y_a)[1], Tb(-14, 0)[0], f"{fw:g}", off=0.0)
-        dim_v(ax, Tb(0, p.W)[1], Tb(0, y_b)[1], Tb(-14, 0)[0], f"{fw:g}", off=0.0)
-    dim_h(ax, Tb(0, p.W + 10)[0], Tb(Hc / 2, p.W + 10)[0], Tb(0, p.W + 10)[1], f"{Hc/2:g}", off=1.2)
-    dim_h(ax, Tb(0, p.W + 36)[0], Tb(Hc, p.W + 36)[0], Tb(0, p.W + 36)[1], f"{Hc:g}", off=1.5)
-    ax.text(Tb(Hc / 2, 0)[0], Tb(0, y_a)[1] - 2.6,
-            f"短刀卡 ×{d['cards_short']}/层（下开槽 · {d['slots_short']} 槽）"
-            + (f" · 展开 {y_b - y_a:g}（两端各 {fw:g} = 净长 {d['fold_len']:g}+t，虚线=折弯线）"
-               if d.get("fold_w") else ""),
-            fontsize=8, ha="center", va="top")
+    l_a, l_b = (-fwc, p.W + fwc) if fwc else (0.0, p.W)
+    # 轮廓闭合：长边（高 Hc）+ 两端封口
+    ax.plot(*zip(Tb(Hc, l_a), Tb(Hc, l_b)), color="k", lw=0.8)
+    ax.plot(*zip(Tb(0, l_a), Tb(Hc, l_a)), color="k", lw=0.8)
+    ax.plot(*zip(Tb(0, l_b), Tb(Hc, l_b)), color="k", lw=0.8)
+    # 槽口（槽口在 h=0 一侧，深 Hc/2）：h=0 长边遇槽断开（卡自身坐标，0..W 为卡体）
+    prev = l_a
+    for yc in sc:
+        s0, s1 = yc - t / 2, yc + t / 2
+        ax.plot(*zip(Tb(0, prev), Tb(0, s0)), color="k", lw=0.8)
+        ax.plot(*zip(Tb(0, s0), Tb(Hc / 2, s0), Tb(Hc / 2, s1), Tb(0, s1)), color="k", lw=0.8)
+        prev = s1
+    ax.plot(*zip(Tb(0, prev), Tb(0, l_b)), color="k", lw=0.8)
+    if fwc:
+        for le in (0.0, p.W):                           # 原卡端 = 折弯线（点划线）
+            ax.plot(*zip(Tb(0, le), Tb(Hc, le)), **FOLD_STYLE)
+        dim_v(ax, Tb(0, l_a)[1], Tb(0, 0.0)[1], Tb(-14, 0)[0], f"{fwc:g}", off=0.0)
+        dim_v(ax, Tb(0, p.W)[1], Tb(0, l_b)[1], Tb(-14, 0)[0], f"{fwc:g}", off=0.0)
+    # 高 / 槽深标注：排在图形下方（折边之外），不压任何图线
+    yc1 = Tb(0, l_a)[1] - 9.0
+    yc2 = Tb(0, l_a)[1] - 22.0
+    dim_h(ax, Tb(0, l_a)[0], Tb(Hc / 2, l_a)[0], yc1, f"{Hc/2:g}", off=1.2)
+    dim_h(ax, Tb(0, l_a)[0], Tb(Hc, l_a)[0], yc2, f"{Hc:g}", off=1.5)
+    # 视图说明：排在**结构上保证空置的带**里 —— 长卡视图（含其右侧高度尺寸列）之下、
+    # 技术要求块之上。原来贴在图下方，正好压在长卡视图的高度尺寸列上（用户 2026-09-18 反馈）。
+    cap_y = ROW2 - 1.2
+    cap = [f"短刀卡 ×{d['cards_short']}/层（下开槽 · {d['slots_short']} 槽）"]
+    if fwc:
+        cap.append(f"展开料 {l_b - l_a:g} × {Hc:g}（两端各折 {fwc:g}）")
+    ax.text(BX, cap_y, "\n".join(cap), fontsize=8, ha="left", va="top")
 
     # ---------------- C 长卡侧视图（左下，自然向：长横向 / 高竖向 / 槽自顶向下） ----------------
-    # 同 B 的口径：底图 = 无折边侧视图；两端端面竖线改虚线（折弯线）；
-    # 折弯线之外外伸 fl（= 净长 30 + t），高度与刀卡相同。
+    # 同 B：按展开料画（两端各延长 fl_out、同高），原卡端 = 折弯线（点划线），轮廓闭合，尺寸不压线。
     CX, CY = 48.0, ROW2
     Tc = mk(CX, CY)
     sl = _slots(d["margin_l"], d["slots_long"], d["pitch_l"], t)
-    fcl = fl if d.get("fold_l") else 0.0
-    x_a, x_b = (-fcl, p.L + fcl) if fcl else (0.0, p.L)
-    # 上下长边（贯通，含折边段）
+    x_a, x_b = (-flc, p.L + flc) if flc else (0.0, p.L)
+    # 轮廓闭合：上下长边（h=0 / h=Hc）+ 两端封口
     ax.plot(*zip(Tc(x_a, 0), Tc(x_b, 0)), color="k", lw=0.8)
     ax.plot(*zip(Tc(x_a, Hc), Tc(x_b, Hc)), color="k", lw=0.8)
-    # 槽口轮廓（原卡体范围）
-    prev = 0.0
+    ax.plot(*zip(Tc(x_a, 0), Tc(x_a, Hc)), color="k", lw=0.8)
+    ax.plot(*zip(Tc(x_b, 0), Tc(x_b, Hc)), color="k", lw=0.8)
+    # 槽口（自顶向下，深 Hc/2）：h=Hc 长边遇槽断开（卡自身坐标，0..L 为卡体）
+    prev = x_a
     for xc in sl:
-        ax.plot(*zip(Tc(prev, Hc), Tc(xc - t / 2, Hc)), color="k", lw=0.8)
-        ax.plot(*zip(Tc(xc - t / 2, Hc), Tc(xc - t / 2, Hc / 2), Tc(xc + t / 2, Hc / 2),
-                     Tc(xc + t / 2, Hc)), color="k", lw=0.8)
-        prev = xc + t / 2
-    ax.plot(*zip(Tc(prev, Hc), Tc(p.L, Hc)), color="k", lw=0.8)
-    if fcl:
-        for xe in (0.0, p.L):
-            ax.plot(*zip(Tc(xe, 0), Tc(xe, Hc)), **FOLD_STYLE)      # 折弯线（原卡端）
-        # 折边端部封口：外伸段两端的可见竖直端边
-        ax.plot(*zip(Tc(x_a, 0), Tc(x_a, Hc)), color="k", lw=0.8)
-        ax.plot(*zip(Tc(x_b, 0), Tc(x_b, Hc)), color="k", lw=0.8)
-        dim_h(ax, Tc(0, Hc / 2)[0], Tc(x_a, Hc / 2)[0], Tc(0, Hc + 26)[1], f"{fcl:g}", off=1.2)
-        dim_h(ax, Tc(p.L, Hc / 2)[0], Tc(x_b, Hc / 2)[0], Tc(0, Hc + 26)[1], f"{fcl:g}", off=1.2)
-        dim_h(ax, Tc(0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], Tc(0, Hc + 10)[1], f"{p.L:g}")
-        dim_h(ax, Tc(x_a, Hc + 32)[0], Tc(x_b, Hc + 32)[0], Tc(0, Hc + 32)[1],
+        s0, s1 = xc - t / 2, xc + t / 2
+        ax.plot(*zip(Tc(prev, Hc), Tc(s0, Hc)), color="k", lw=0.8)
+        ax.plot(*zip(Tc(s0, Hc), Tc(s0, Hc / 2), Tc(s1, Hc / 2), Tc(s1, Hc)), color="k", lw=0.8)
+        prev = s1
+    ax.plot(*zip(Tc(prev, Hc), Tc(x_b, Hc)), color="k", lw=0.8)
+    if flc:
+        for xe in (0.0, p.L):                           # 原卡端 = 折弯线（点划线）
+            ax.plot(*zip(Tc(xe, 0), Tc(xe, Hc)), **FOLD_STYLE)
+    # 尺寸：本体长 + 两端折边（分两层）+ 展开长；高度标在折边**之外**（右侧），不压图线
+    dim_h(ax, Tc(0.0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], Tc(0, Hc + 10)[1], f"{p.L:g}")
+    if flc:
+        dim_h(ax, Tc(x_a, Hc + 26)[0], Tc(0.0, Hc + 26)[0], Tc(0, Hc + 26)[1], f"{flc:g}", off=1.2)
+        dim_h(ax, Tc(p.L, Hc + 26)[0], Tc(x_b, Hc + 26)[0], Tc(0, Hc + 26)[1],
+              f"{flc:g}", off=1.2)
+        dim_h(ax, Tc(x_a, Hc + 40)[0], Tc(x_b, Hc + 40)[0], Tc(0, Hc + 40)[1],
               f"展开 {x_b - x_a:g}", off=1.5)
-    else:
-        dim_h(ax, Tc(0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], Tc(0, Hc + 10)[1], f"{p.L:g}")
-    dim_v(ax, Tc(0, 0)[1], Tc(0, Hc)[1], Tc(-16, 0)[0], f"{Hc:g}", off=0.0)
-    dim_v(ax, Tc(0, Hc)[1], Tc(0, Hc / 2)[1], Tc(d["margin_l"] + d["cell_l"] / 2, 0)[0], f"{Hc/2:g}")
-    ax.text(Tc(x_b / 2, 0)[0], Tc(0, 0)[1] - 2.6,
+    # 高度尺寸：贴在本体右端之外（+6），标签在尺寸线右侧。
+    # 不能用 +15：B 视图（右上）的高度/槽深尺寸线横跨 [BX, BX+Hc·s]，
+    # 会与本列竖向尺寸线相交（GB/T 4458.4 尺寸线不得相交）——用户 2026-09-18 反馈。
+    dim_v(ax, Tc(0, 0)[1], Tc(0, Hc)[1], Tc(x_b, 0)[0] + 6.0, f"{Hc:g}", off=1.0)
+    dim_v(ax, Tc(0, Hc)[1], Tc(0, Hc / 2)[1],
+          Tc(d["margin_l"] + d["cell_l"] / 2, 0)[0], f"{Hc/2:g}")
+    ax.text(Tc((x_a + x_b) / 2, 0)[0], Tc(0, 0)[1] - 2.6,
             f"长刀卡 ×{d['cards_long']}/层（上开槽 · {d['slots_long']} 槽）"
-            + (f" · 展开 {x_b - x_a:g}（两端各 {fcl:g} = 净长 {d['fold_len']:g}+t，虚线=折弯线）"
-               if d.get("fold_l") else ""),
+            + (f" · 展开 {x_b - x_a:g}（两端各 {flc:g}）" if d.get("fold_l") else ""),
             fontsize=8, ha="center", va="top")
 
     # ---------------- 技术要求（左下，长卡视图之下） ----------------
@@ -261,16 +308,22 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
                           f"{d['cards_short_total']} 张）")
         notes.append(f"8. 折边（边距 ≤ {d['fold_thr']:g} 触发，本图 {d['margin_l']:g}/{d['margin_w']:g}）："
                      + "；".join(_parts)
-                     + f"；折弯线见虚线（原卡端），折 90° 后向容器内顶靠相邻刀卡端面（缓冲/限位）；"
-                       f"俯视图为折叠后状态（立板顶边），侧视图按展开画出。")
+                     + f"；折边与刀卡垂直（卡端折 90° 的竖板，俯视为卡端直角）；"
+                       f"侧视图按展开料画，点划线 = 折弯线（距端 {d['fold_len_out']:g} "
+                       f"= 净长 {d['fold_len']:g} + 板厚 {d['t']:g}）。")
     if len(notes) > 8:
         notes[0] = "技术要求："
-    for i, line in enumerate(notes):
-        ax.text(48.0, y0 - i * 7.4, line, fontsize=6.8, color="0.12")
+    # 技术要求**必须**折行到标题栏左侧（标题栏占 x ≥ 228）：整行铺到 273 会伸进标题栏。
+    lines = []
+    for ln in notes:
+        seg = _wrap_text(ln, 168.0, 6.8)
+        lines.extend([seg[0]] + ["    " + s for s in seg[1:]])
+    for i, line in enumerate(lines):
+        ax.text(48.0, y0 - i * 7.1, line, fontsize=6.8, color="0.12")
 
-    ax.text(page[0] / 2, page[1] - 20, f"瓦楞刀卡网格 {p.L:g}×{p.W:g}×{p.H:g} · {vtxt} · 俯视图 + 刀卡侧视图",
+    ax.text(page[0] / 2, page[1] - 19, f"瓦楞刀卡网格 {p.L:g}×{p.W:g}×{p.H:g} · {vtxt} · 俯视图 + 刀卡侧视图",
             fontsize=13, fontweight="bold", ha="center", va="center")
-    ax.text(page[0] / 2, page[1] - 27,
+    ax.text(page[0] / 2, page[1] - 25.5,
             f"每格 {d['cell_l']:g}×{d['cell_w']:g}×{d['cell_h']:g} · {d['n_l']}×{d['n_w']} 格 × {d['layers']} 层 · "
             f"{_st(scale, not manual)} · 单位 mm · {_today()} · 生成：{author}",
             fontsize=8, ha="center", va="center", color="0.15")

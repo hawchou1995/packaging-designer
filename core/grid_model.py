@@ -27,6 +27,42 @@ def _slot_centers(margin, n_slots, pitch, t):
     return [margin + t / 2 + i * pitch for i in range(n_slots)]
 
 
+def _fold_tabs(p, d):
+    """折叠后折边的俯视投影：[(x0, x1, y0, y1, is_long, fold_edge)]
+
+    用户口径（2026-09-18）：
+      · 折边 = 卡端折 90° 的竖板，**与刀卡本体垂直**（长卡两端的沿 Y 伸出，短卡两端的沿 X 伸出）；
+      · 沿卡长方向只占一个板厚 t（自卡端向内，不越出卡端）→ 俯视为卡端的直角“L”；
+      · 折向取容器中心侧，折边始终落在容器内，不会捅出箱壁。
+
+    fold_edge 指出矩形四条边里哪一条**贴在本体料面上**（= 折弯线，制图要点划线），
+    其余三边是折边自身的裁切边（实线）。取值 "x0"/"x1"/"y0"/"y1"。
+    """
+    t = d["t"]
+    fl = d.get("fold_len", 0.0)
+    L, W = p.L, p.W
+    xs = _slot_centers(d["margin_l"], d["slots_long"], d["pitch_l"], t)   # 短卡中心 X
+    ys = _slot_centers(d["margin_w"], d["slots_short"], d["pitch_w"], t)  # 长卡中心 Y
+    out = []
+    if d.get("fold_l"):
+        for yc in ys:
+            sgn = 1.0 if yc < W / 2.0 else -1.0
+            ya = yc + sgn * t / 2.0
+            yb = ya + sgn * fl
+            for (xa, xb) in ((0.0, t), (L - t, L)):
+                edge = "y0" if sgn > 0 else "y1"      # 贴本体料面的那条长边 = 折弯线
+                out.append((xa, xb, min(ya, yb), max(ya, yb), True, edge))
+    if d.get("fold_w"):
+        for xc in xs:
+            sgn = 1.0 if xc < L / 2.0 else -1.0
+            xa = xc + sgn * t / 2.0
+            xb = xa + sgn * fl
+            for (ya, yb) in ((0.0, t), (W - t, W)):
+                edge = "x0" if sgn > 0 else "x1"
+                out.append((min(xa, xb), max(xa, xb), ya, yb, False, edge))
+    return out
+
+
 def items_layer(p, d):
     """单层格架（轴测图用；z 自 0 起）。"""
     t, Hc = d["t"], d["cell_h"]
@@ -40,64 +76,28 @@ def items_layer(p, d):
 
     xs = _slot_centers(d["margin_l"], d["slots_long"], d["pitch_l"], t)   # 短卡 X 位置
     ys = _slot_centers(d["margin_w"], d["slots_short"], d["pitch_w"], t)  # 长卡 Y 位置
-    # 长卡（沿 X），槽自顶向下
-    # 有折边时：卡端 fold_len 区段的本体由 LF 立板替代，本体从 fold_len 处开始
+    # 长卡（沿 X），槽自顶向下；两端折边是**垂直竖板**（见 _fold_tabs），本体仍全长伸至箱壁
     for j, yc in enumerate(ys):
-        _trim = d.get("fold_len", 0.0) if d.get("fold_l") else 0.0
         for (a, b, is_slot) in _card_segments(L, xs, t):
-            a2, b2 = a, b
-            if _trim > 0:
-                if a < _trim < b:
-                    a2 = _trim
-                elif b <= _trim:
-                    continue
-            w = b2 - a2
-            if w <= 1e-9:
-                continue
-            cx = x0 + (a2 + b2) / 2
+            cx = x0 + (a + b) / 2
             if not is_slot:
-                add(f"L{j:02d}_f{a:07.1f}", (w, t, Hc), (cx, y0 + yc, Hc / 2))
+                add(f"L{j:02d}_f{a:07.1f}", (b - a, t, Hc), (cx, y0 + yc, Hc / 2))
             else:
-                add(f"L{j:02d}_s{a:07.1f}", (w, t, Hc / 2), (cx, y0 + yc, Hc / 4))
-    # 折边实体（用户 2026-09-18 定案 + 立体几何核定）：绕本卡端面竖直折弯线折 90°，
-    #   从**本体料面**起向容器内侧伸净长 30（折弯圆角区让给弯曲过渡，不与本体穿插），
-    #   折边厚 = t（沿折出方向）、高 = 刀卡高。
-    #   例：短卡 xc=45（本体 YZ 竖板，x∈[-245,-240]，卡端 y=-190）→
-    #   折边占 x∈[-240,-215]（从料面 -240 伸 30 沿 +X）、y∈[-190,-185]、z∈[0,85]。
-    fl_net = d.get("fold_len", 30.0)
-    if d.get("fold_l"):                       # 长卡（本体厚沿 Y）：折边沿 X 向内折
-        # 折边仍在本体的厚列内（y∈[yc-t/2,yc+t/2]），从卡端 x=0/L 向容器内伸 fl_net
-        for j, yc in enumerate(ys):
-            y0f = y0 + yc                               # 与本体同列（厚 t 沿 Y）
-            add(f"LF{j:02d}_a", (fl_net, t, Hc), (x0 + fl_net / 2, y0f, Hc / 2))
-            add(f"LF{j:02d}_b", (fl_net, t, Hc), (x0 + L - fl_net / 2, y0f, Hc / 2))
-    if d.get("fold_w"):                       # 短卡（本体厚沿 X）：折边沿 Y 向内折
-        # 折边 = 本体端部折 90°仍在本体的厚列内（x∈[xc-t/2,xc+t/2]），
-        # 从卡端 y=0/W 向容器内伸净长 fl_net → 立板占 y∈[0,fl_net] / [W-fl_net,W]
-        for i, xc in enumerate(xs):
-            x0f = x0 + xc                                # 与本体同列（厚 t 沿 X）
-            add(f"SF{i:02d}_a", (t, fl_net, Hc), (x0f, y0 + fl_net / 2, Hc / 2))
-            add(f"SF{i:02d}_b", (t, fl_net, Hc), (x0f, y0 + W - fl_net / 2, Hc / 2))
+                add(f"L{j:02d}_s{a:07.1f}", (b - a, t, Hc / 2), (cx, y0 + yc, Hc / 4))
     # 短卡（沿 Y），槽自底向上（槽段保留上半幅）
-    # 若该卡有折边：卡端 fold_len 区段的本体已折 90° 立起（由 SF/LF 立板替代），
-    # 本体从 fold_len 处开始，避免与立板体积重叠。
     for i, xc in enumerate(xs):
-        _trim = d.get("fold_len", 0.0) if d.get("fold_w") else 0.0
         for (a, b, is_slot) in _card_segments(W, ys, t):
-            a2, b2 = a, b
-            if _trim > 0:
-                if a < _trim < b:                        # 端部段跨过折弯区 → 截短
-                    a2 = _trim
-                elif b <= _trim:                         # 整段在折弯区内 → 被立板替代
-                    continue
-            w = b2 - a2
-            if w <= 1e-9:
-                continue
-            cy = y0 + (a2 + b2) / 2
+            cy = y0 + (a + b) / 2
             if not is_slot:
-                add(f"S{i:02d}_f{a:07.1f}", (t, w, Hc), (x0 + xc, cy, Hc / 2))
+                add(f"S{i:02d}_f{a:07.1f}", (t, b - a, Hc), (x0 + xc, cy, Hc / 2))
             else:
-                add(f"S{i:02d}_s{a:07.1f}", (t, w, Hc / 2), (x0 + xc, cy, 3 * Hc / 4))
+                add(f"S{i:02d}_s{a:07.1f}", (t, b - a, Hc / 2), (x0 + xc, cy, 3 * Hc / 4))
+    # 折边竖板（与本体垂直，高 = 刀卡高）：矩形表直接来自 _fold_tabs，与俯视/侧视同源
+    for k, tb in enumerate(_fold_tabs(p, d)):
+        tx0, tx1, ty0, ty1, is_long = tb[:5]
+        pre = "LF" if is_long else "SF"
+        add(f"{pre}{k:02d}", (tx1 - tx0, ty1 - ty0, Hc),
+            (x0 + (tx0 + tx1) / 2, y0 + (ty0 + ty1) / 2, Hc / 2))
     return out
 
 
@@ -216,11 +216,12 @@ def _dedupe(pts):
 
 
 def card_outline_long(p, d):
-    """长刀卡展开：展开长 = L + 2×折边（折边在同一块板上，折弯线在距端 fold_len 处）。"""
+    """长刀卡展开：展开长 = L + 2×折边（折边在同一块板上，折弯线在距端 fold_len_out 处）。"""
     t, Hc = d["t"], d["cell_h"]
-    fl = d.get("fold_len", 0.0) if d.get("fold_l") else 0.0
+    fl = d.get("fold_len_out", d.get("fold_len", 0.0)) if d.get("fold_l") else 0.0
     x0 = fl                                    # 卡体起点（含左折边）
-    pts = [(0.0, 0.0), (x0 + p.L, 0.0), (x0 + p.L, Hc)]
+    x1 = x0 + p.L + fl                         # 展开料右端（含右折边）
+    pts = [(0.0, 0.0), (x1, 0.0), (x1, Hc)]
     for s in reversed(_slot_centers(d["margin_l"], d["slots_long"], d["pitch_l"], t)):
         pts += [(x0 + s + t / 2, Hc), (x0 + s + t / 2, Hc / 2),
                 (x0 + s - t / 2, Hc / 2), (x0 + s - t / 2, Hc)]
@@ -231,13 +232,14 @@ def card_outline_long(p, d):
 def card_outline_short(p, d):
     """短刀卡展开：展开长 = W + 2×折边。"""
     t, Hc = d["t"], d["cell_h"]
-    fl = d.get("fold_len", 0.0) if d.get("fold_w") else 0.0
+    fl = d.get("fold_len_out", d.get("fold_len", 0.0)) if d.get("fold_w") else 0.0
     y0 = fl
+    y1 = y0 + p.W + fl                         # 展开料上端（含上折边）
     pts = [(0.0, 0.0)]
     for s in _slot_centers(d["margin_w"], d["slots_short"], d["pitch_w"], t):
         pts += [(y0 + s - t / 2, 0.0), (y0 + s - t / 2, Hc / 2),
                 (y0 + s + t / 2, Hc / 2), (y0 + s + t / 2, 0.0)]
-    pts += [(y0 + p.W, 0.0), (y0 + p.W, Hc), (0.0, Hc)]
+    pts += [(y1, 0.0), (y1, Hc), (0.0, Hc)]
     return _dedupe(pts)
 
 

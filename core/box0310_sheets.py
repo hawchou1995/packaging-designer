@@ -153,7 +153,9 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
         dim_h(ax, T1(a, 0)[0], T1(b, 0)[0], oy - 8.0, g(b - a))
     dim_h(ax, T1(0, 0)[0], T1(ls["X5"], 0)[0], oy - 17.0, "展开长 " + g(ls["X5"]))
     dim_v(ax, T1(0, 0)[1], T1(0, si_s["blank_h"])[1], ox - 8.0, g(si_s["blank_h"]))
-    ax.text(T1(0, 0)[0] - 14, oy + 8, "围框（×1）", fontsize=7.5, ha="left", color="0.1")
+    # 视图名放在本体**上方**：写在左侧中部会与竖向尺寸线相交（用户 2026-09-18 反馈）
+    ax.text(T1(0, 0)[0] - 14, oy + si_s["blank_h"] / scale + 3.0, "围框（×1）",
+            fontsize=7.5, ha="left", color="0.1")
 
     # --- cap blanks (bottom row: 下盖 / 上盖，板厚不同则尺寸不同) ---
     caps_w = (gsb["W1"] + gst["W1"]) / scale + 10.0

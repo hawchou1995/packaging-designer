@@ -81,7 +81,7 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
                            [(a, p.H), (a, p.H - p.sh), (b, p.H - p.sh), (b, p.H)]]),
                     color="k", lw=0.8, linestyle=ls)
     dim_h(ax, Tf(0, p.H + 12)[0], Tf(p.L, p.H + 12)[0], Tf(0, p.H + 12)[1], f"{p.L:g}", fs=7)
-    dim_v(ax, Tf(0, 0)[1], Tf(0, p.H)[1], Tf(-20, 0)[0], f"{p.H:g}", fs=7, off=-0.6)
+    dim_v(ax, Tf(0, 0)[1], Tf(0, p.H)[1], Tf(-20, 0)[0], f"{p.H:g}", fs=7, off=-3.4)
     s0 = d["slots"][0]
     dim_h(ax, Tf(s0[0], p.H + 26)[0], Tf(s0[1], p.H + 26)[0], Tf(0, p.H + 26)[1], f"{p.sl:g}", fs=7)
     ax.text(Tf(p.L / 2, 0)[0], Tf(0, 0)[1] - 2.6, "主视图", fontsize=8, ha="center", va="top")
@@ -101,9 +101,9 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     dim_h(ax, Tt(a0, -10)[0], Tt(b0, -10)[0], yb, f"{p.sl:g}", fs=7, off=-6.5)
     dim_h(ax, Tt(b0, -10)[0], Tt(b0 + p.gap, -10)[0], yb, f"{p.gap:g}", fs=7, off=-3.0)
     dim_h(ax, Tt(0, -58)[0], Tt(p.L, -58)[0], Tt(0, -58)[1], f"{p.L:g}", fs=7, off=-2.6)
-    dim_v(ax, Tt(0, 0)[1], Tt(0, p.W)[1], Tt(-20, 0)[0], f"{p.W:g}", fs=7, off=-0.6)
+    dim_v(ax, Tt(0, 0)[1], Tt(0, p.W)[1], Tt(-20, 0)[0], f"{p.W:g}", fs=7, off=-3.4)
     if not d["through"]:
-        dim_v(ax, Tt(b0 - 4, d["sy0"])[1], Tt(b0 - 4, d["sy1"])[1], Tt(b0 - 4, 0)[0], f"{p.sw:g}", fs=6.4, off=1.5)
+        dim_v(ax, Tt(b0 - 4, d["sy0"])[1], Tt(b0 - 4, d["sy1"])[1], Tt(b0 - 4, 0)[0], f"{p.sw:g}", fs=6.4, off=-2.6)
     ax.text(Tt(p.L / 2, 0)[0], Tt(0, 0)[1] - 2.6, f"俯视图（开槽 {d['n']} 个 · 间距 {p.gap:g}）",
             fontsize=8, ha="center", va="top")
 
@@ -121,8 +121,8 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
         ax.plot(*zip(*[Tq(w, h) for w, h in
                        [(0, p.H - p.sh), (d["sy1"], p.H - p.sh), (d["sy1"], p.H)]]),
                 color="k", lw=0.7, linestyle=(0, (4, 3)))
-    dim_v(ax, Tq(0, 0)[1], Tq(0, p.H)[1], Tq(-22, 0)[0], f"{p.H:g}", fs=7, off=-0.6)
-    dim_v(ax, Tq(0, p.H)[1], Tq(0, p.H - p.sh)[1], Tq(d["sw_eff"] / 2, 0)[0], f"{p.sh:g}", fs=6.4, off=1.5)
+    dim_v(ax, Tq(0, 0)[1], Tq(0, p.H)[1], Tq(-22, 0)[0], f"{p.H:g}", fs=7, off=-3.4)
+    dim_v(ax, Tq(0, p.H)[1], Tq(0, p.H - p.sh)[1], Tq(d["sw_eff"] / 2, 0)[0], f"{p.sh:g}", fs=6.4, off=-3.2)
     dim_h(ax, Tq(0, p.H + 12)[0], Tq(p.W, p.H + 12)[0], Tq(0, p.H + 12)[1], f"{p.W:g}", fs=7)
     ax.text(Tq(p.W / 2, 0)[0], Tq(0, 0)[1] - 2.6, "左视图", fontsize=8, ha="center", va="top")
 

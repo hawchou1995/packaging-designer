@@ -98,9 +98,15 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     lo, lc, lcuts, li = dieline_lid(p)
     gl = layout_lid(p)
     from drawutil import pick_scale, scale_str, scale_tag
+    # 版面横向预算（纸面绝对值）。右侧轴测图的实际左界约 x=305.8，
+    # 天盖图的竖向尺寸列排进「底箱 / 天盖」之间的间隔里 —— 原来排在天盖图右侧，
+    # 大箱（1:20）时尺寸线直接伸进轴测图（用户 2026-09-18 反馈的干涉）。
+    XD0, XD1 = 42.0, 302.0
+    GAP_BL = 17.0                       # 两图间隔：天盖尺寸列(约 12.6mm) + 余量
     if not manual:
-        scale = pick_scale(bi["blank_w"] + 60.0 + li["blank_w"],
-                           max(bi["blank_h"], li["blank_h"]), 240.0, 166.0)
+        scale = pick_scale(bi["blank_w"] + li["blank_w"],
+                           max(bi["blank_h"], li["blank_h"]),
+                           XD1 - XD0 - GAP_BL, 166.0)
 
     pw, ph = page
     fig = plt.figure(figsize=(pw / 25.4, ph / 25.4))
@@ -113,7 +119,8 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     xm = lambda a, b: (a + b) / 2.0
 
     # ---------------- base blank (left) ----------------
-    ox = 42.0 + max(0.0, (246.0 - (bi["blank_w"] + 60.0 + li["blank_w"]) / scale) / 2.0)
+    _span = (bi["blank_w"] + li["blank_w"]) / scale + GAP_BL
+    ox = XD0 + max(0.0, ((XD1 - XD0) - _span) / 2.0)
     oy = 262.0 - bi["blank_h"] / scale
     T1 = lambda x, y: (ox + x / scale, oy + y / scale)
     sp = [T1(*q) for q in bo] + [T1(*bo[0])]
@@ -145,11 +152,11 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     dim_h(ax, T1(lb["X0"], 0)[0], T1(lb["X5"], 0)[0], yb2, "展开长 " + g(lb["X5"] - lb["X0"]))
     dim_v(ax, T1(0, lb["Y0"] - p.base_fo)[1], T1(0, lb["Y0"])[1], ox - 7.0, g(p.base_fo))
     dim_v(ax, T1(0, lb["Y0"])[1], T1(0, lb["Y1"])[1], ox - 7.0, g(lb["Y1"]))
-    ax.text(ox - 12.0, oy + bi["blank_h"] / scale + 5, "底箱（HSC，×1）",
+    ax.text(ox - 12.0, oy + bi["blank_h"] / scale + 2.5, "底箱（HSC，×1）",
             fontsize=7.0, ha="left", color="0.1")
 
     # ---------------- lid blank (right) ----------------
-    ox2 = ox + bi["blank_w"] / scale + 60.0 / scale
+    ox2 = ox + bi["blank_w"] / scale + GAP_BL
     oy2 = 262.0 - li["blank_h"] / scale
     T2 = lambda x, y: (ox2 + x / scale, oy2 + y / scale)
     lp = [T2(*q) for q in lo] + [T2(*lo[0])]
@@ -172,11 +179,14 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     for (a, b) in ((gl["W0"], gl["cx0"]), (gl["cx0"], gl["cx1"]), (gl["cx1"], gl["W1"])):
         dim_h(ax, T2(a, 0)[0], T2(b, 0)[0], oy2 - 7.0, g(b - a))
     dim_h(ax, T2(gl["W0"], 0)[0], T2(gl["W1"], 0)[0], oy2 - 15.0, "展开长 " + g(gl["W1"] - gl["W0"]))
-    xr = T2(gl["W1"], 0)[0] + 6.0
+    # 天盖竖向尺寸列：排在**两图之间的间隔**里（靠天盖左端），数字放在尺寸线左侧。
+    # 排到天盖右侧时，大箱比例下会伸进右侧轴测图。
+    xr = T2(gl["W0"], 0)[0] - 5.0
     for (a, b) in ((gl["H0"], gl["cy0"]), (gl["cy0"], gl["cy1"]), (gl["cy1"], gl["H1"])):
-        dim_v(ax, T2(0, a)[1], T2(0, b)[1], xr, g(b - a))
-    dim_v(ax, T2(0, gl["H0"])[1], T2(0, gl["H1"])[1], xr + 9.0, "展开高 " + g(gl["H1"]))
-    ax.text(T2(gl["W1"], 0)[0] + 6.0, oy2 + gl["H1"] / scale + 5, "天盖·平顶罩盖（×1）",
+        dim_v(ax, T2(0, a)[1], T2(0, b)[1], xr, g(b - a), off=-2.6)
+    dim_v(ax, T2(0, gl["H0"])[1], T2(0, gl["H1"])[1], xr - 5.0, "展开高 " + g(gl["H1"]),
+          off=-2.6)
+    ax.text(T2(gl["W1"], 0)[0] + 6.0, oy2 + gl["H1"] / scale + 2.5, "天盖·平顶罩盖（×1）",
             fontsize=7.0, ha="right", color="0.1")
 
     # ---------------- title / legend / notes ----------------
