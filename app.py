@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings()
-        self.setWindowTitle(f"{APP_NAME} 1.0.8")
+        self.setWindowTitle(f"{APP_NAME} 1.0.9")
         ic = theme.icon_path("app.ico")
         if os.path.exists(ic):
             self.setWindowIcon(QIcon(ic))

@@ -53,18 +53,32 @@ def run(tag, cfg):
 
     xs_l = gd._slots(d["margin_l"], d["slots_long"], d["pitch_l"], t)
     ys_w = gd._slots(d["margin_w"], d["slots_short"], d["pitch_w"], t)
+    fl_net = d.get("fold_len", 30.0)                # 折边净长（L 立边长度）
     flaps = []
-    # 新口径（用户 2026-09-18）：折边在**原卡端之外**，与卡体同宽 t，外伸 fl（= 净长 + t）
+    # L 形折叠口径（用户 2026-09-18 复核）：折边在**容器内侧**、与卡体垂直，
+    # 宽 = 板厚 t（贴折弯线那段），长 = 净长 fl_net；折弯线 = 原卡端横跨板厚。
     if d.get("fold_l"):
         for yc in ys_w:
-            y0, y1 = yc - t / 2, yc + t / 2
-            flaps.append(("长卡折边(左端)", (-fl, y0), (0.0, y1), (0.0, y0), (0.0, y1)))
-            flaps.append(("长卡折边(右端)", (p.L, y0), (p.L + fl, y1), (p.L, y0), (p.L, y1)))
+            sy = -1.0 if yc > p.W / 2.0 else 1.0
+            y0 = yc + sy * t / 2                    # 立边起点（折弯线外侧料面）
+            y1 = y0 + sy * fl_net                   # 立边外端（向容器内）
+            x0, x1 = 0.0, t                         # 左端立边（宽 = 板厚）
+            flaps.append(("长卡折边(左端)", (min(x0, x1), min(y0, y1)),
+                          (max(x0, x1), max(y0, y1)), (0.0, y0), (0.0, y1)))
+            x0, x1 = p.L - t, p.L
+            flaps.append(("长卡折边(右端)", (min(x0, x1), min(y0, y1)),
+                          (max(x0, x1), max(y0, y1)), (p.L, y0), (p.L, y1)))
     if d.get("fold_w"):
         for xc in xs_l:
-            x0, x1 = xc - t / 2, xc + t / 2
-            flaps.append(("短卡折边(下端)", (x0, -fl), (x1, 0.0), (x0, 0.0), (x1, 0.0)))
-            flaps.append(("短卡折边(上端)", (x0, p.W), (x1, p.W + fl), (x0, p.W), (x1, p.W)))
+            sx = -1.0 if xc > p.L / 2.0 else 1.0
+            x0 = xc + sx * t / 2
+            x1 = x0 + sx * fl_net
+            y0, y1 = 0.0, t
+            flaps.append(("短卡折边(下端)", (min(x0, x1), min(y0, y1)),
+                          (max(x0, x1), max(y0, y1)), (x0, 0.0), (x1, 0.0)))
+            y0, y1 = p.W - t, p.W
+            flaps.append(("短卡折边(上端)", (min(x0, x1), min(y0, y1)),
+                          (max(x0, x1), max(y0, y1)), (x0, p.W), (x1, p.W)))
 
     def has_end(pt, tol=0.4):
         tp = T(*pt)
