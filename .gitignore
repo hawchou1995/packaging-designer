@@ -13,6 +13,13 @@ installer/*.exe
 _*/
 _settings.ini
 guiprobe_out/
+_foldview/
+_foldref/
+_crop*
+_ref*
+_readme*
+_fix_*
+_chk3d
 _dgsread/
 _realdir/
 _v104/
