@@ -14,7 +14,7 @@ import theme
 GITHUB_URL = "https://github.com/hawchou1995/packaging-designer"
 AUTHOR = "周豪 · 供应链管理部"
 APP_NAME = "包装设计器 Packaging Designer"
-VERSION = "1.0.13"
+VERSION = "1.0.14"
 DESC = ("面向瓦楞纸包装的参数量出图工具：片材、仿形垫块、网格刀卡、FEFCO 0201 / 0310 / 0312 纸箱。\n"
         "一次输入即产出 A3 图纸（展开图 + 轴测图 + GB 图框）、1:1 DXF、STEP/STL 数模与参数表。")
 
@@ -53,8 +53,8 @@ class SettingsDialog(QDialog):
         return lab
 
     def _settings_tab(self):
-        w = QWidget()
-        f = QFormLayout(w)
+        page = QWidget()                    # 容器必须独占一个名字：被循环变量顶掉 → 连坐布局被析构
+        f = QFormLayout(page)
         f.setLabelAlignment(Qt.AlignRight)
         f.setHorizontalSpacing(12)
         f.setVerticalSpacing(8)
@@ -80,18 +80,18 @@ class SettingsDialog(QDialog):
                              ("dwg_no", "图样代号", "如：SHEET-400x300x15"),
                              ("dwg_version", "版本", "留空 = A"),
                              ("dwg_material", "材料", "如：BC 双瓦楞 t=7（可折叠）")):
-            w = QLineEdit(getattr(self.settings, key))
-            w.setPlaceholderText(ph)
-            setattr(self, "e_" + key, w)
-            f.addRow(f"图框 · {lab}", w)
+            ed = QLineEdit(getattr(self.settings, key))
+            ed.setPlaceholderText(ph)
+            setattr(self, "e_" + key, ed)
+            f.addRow(f"图框 · {lab}", ed)
         f.addRow("", self._sec("图框签署栏（与图纸右下角栏位一一对应）"))
         for key, lab in (("designed", "设计"), ("drawn", "制图"), ("proofed", "校对"),
                          ("checked", "审核"), ("process", "工艺"), ("standard", "标准化"),
                          ("approved", "批准")):
-            w = QLineEdit(getattr(self.settings, key))
-            w.setPlaceholderText("可留空")
-            setattr(self, "e_" + key, w)
-            f.addRow(f"图框 · {lab}", w)
+            ed = QLineEdit(getattr(self.settings, key))
+            ed.setPlaceholderText("可留空")
+            setattr(self, "e_" + key, ed)
+            f.addRow(f"图框 · {lab}", ed)
         self.e_date = QLineEdit(self.settings.date)
         self.e_date.setPlaceholderText("留空 = 生成当天日期")
         f.addRow("图框 · 日期", self.e_date)
@@ -102,7 +102,8 @@ class SettingsDialog(QDialog):
         note.setObjectName("FieldHint")
         note.setWordWrap(True)
         f.addRow("", note)
-        return w
+        self._settings_page = page          # 保活引用（v1.0.14：QFormLayout already deleted 的前车之鉴）
+        return page
 
     def _about_tab(self):
         w = QWidget()

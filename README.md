@@ -6,6 +6,13 @@
 
 **v1.0.1 新增**：按飞书口径的**报价**（面积 / 单价 / 金额 / 每套 / 总价）· **比例按图幅自适应**（可手动覆盖）· **先生成再导出**两段式流程 · 材料表补 **AA 双瓦** · 表单表格化 + 分段按钮（无下拉）· 图纸标题进图框 + 生成人可配。
 
+**v1.0.14 修复（设置对话框点不开：RuntimeError QFormLayout already deleted）**
+
+- **根因**（一行局部变量复用，从 v1.0.0 潜伏到 v1.0.13）：`ui/dialogs.py` 的 `_settings_tab()` 里容器是 `w = QWidget()` / `f = QFormLayout(w)`，而两个字段循环又用 `w = QLineEdit(...)`——PySide6 中**没有父级的 QWidget 由 Python 侧持有所有权**，`w` 被重新绑定后引用计数归零，C++ 容器连同挂在其上的 `QFormLayout` 一起析构；循环里接着调 `f.addRow(...)` 就撞上已删除的 C++ 对象。v1.0.5 在前面插了图样栏循环，引爆点从第 85 行挪到第 86 行（与 `error.log` 轨迹一致）。
+- **修复**：容器改名 `page`、循环变量改名 `ed`、`return page`（原来返回的是最后一个 QLineEdit，就算布局没崩 tab 页也是错的），并加 `self._settings_page` 保活引用防后续重构再踩。字段顺序 / placeholder / `e_*` 属性名一律不动（`on_save` 依赖）。
+- **同类写法全量排查**：其余 8 处 `= QWidget()`（`pages.py`、`widgets.py`、`dialogs.py` 内部）都没有名字复用且立即返回，无隐患。
+- **门禁补强（这轮的真正教训）**：`SettingsDialog` 此前**零自动化覆盖**——`check_gui.py` 只跑四页生成导出、`verify_v104/v105` 只测 `FrameDialog`、`build_release.py` 的冻结包自检只跑后端几何，而 `app.py` 里现成的 `--shot-dialog` 开关从没接进任何门禁。现在：① `check_gui.py` 新增「对话框冒烟」（构造 + 返回对象类型 + 字段齐 + 保存回写 + 两 tab 切换）；② `build_release.py` 冻结包自检后追加 GUI 冒烟（`exe --shot-dialog 0 <png>`，离屏，120s 超时）；③ 异常钩子在 offscreen / `--shot*` 场景不再弹模态框——否则自检不是失败而是**卡死**（本次实测 60s 超时被杀）。
+
 **v1.0.13 修复（三处标注干涉，按现场截图逐一核对）**
 
 - **网格刀卡 · 折边折弯线改点划线**：俯视图里折边的根部（贴刀卡料面那一侧）是**折弯线**，画成实线会被读成「裁断」；现按 GB 点划线表达，其余三边（料面投影边 + 展开料自由端）仍是裁切实线。刀卡本体棱线在折弯线那一小段**断开**，否则实线会把点划线盖住。折弯线在图上只有板厚 t 那么长（1:4 时约 1.25mm），改用加密点划线（周期 4.9pt），保证看得出「划—点—划」。
@@ -173,7 +180,7 @@
 
 ## 安装与运行
 
-下载 `包装设计器-1.0.1-setup.exe`（amd64，约 108 MB），双击安装。**免管理员**：默认装到 `%LOCALAPPDATA%\Programs\PackagingDesigner`，自带 Python 运行时与全部依赖，目标机无需装任何东西。
+下载 `包装设计器-1.0.14-setup.exe`（amd64，约 108 MB），双击安装。**免管理员**：默认装到 `%LOCALAPPDATA%\Programs\PackagingDesigner`，自带 Python 运行时与全部依赖，目标机无需装任何东西。
 
 - 开始菜单 / 桌面快捷方式自动创建，控制面板可正常卸载。
 - 首次出图约 2–3 秒/套（含三维建模）；网格刀卡首次会多花几秒加载几何内核。
@@ -199,8 +206,16 @@ cd installer && makensis setup.nsi
 
 ```bat
 python reg_check.py        :: 几何回归：与已交付样箱逐位比对（需评审用副本，见脚本内路径说明）
-python check_gui.py        :: GUI 端到端：四模块各跑一次真实生成（离屏，不弹窗）
+python check_gui.py        :: GUI 端到端：四模块各跑一次真实生成 + 对话框冒烟（离屏，不弹窗）
+python verify_v104.py      :: 设置/导出目录链路回归
+python verify_v105.py      :: 图框字段（FrameDialog）回归
+python build_release.py dist114   :: 打包 + 产物校验 + 后端自检 + 冻结包 GUI 冒烟（设置对话框实机构造）
 ```
+
+对话框冒烟覆盖的是「只有人手点才会走到」的界面路径（设置/关于、图框字段）——这类路径
+不进自检，就会像 v1.0.0→v1.0.13 的设置对话框那样，一路发到用户面前才炸。
+`build_release.py` 的冻结包 GUI 冒烟用 `--shot-dialog`（离屏截图）真的构造一次对话框，
+失败即**非零退出**（异常钩子在 offscreen 下不弹模态框，不会卡住）。
 
 ## 目录结构
 

@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings()
-        self.setWindowTitle(f"{APP_NAME} 1.0.13")
+        self.setWindowTitle(f"{APP_NAME} 1.0.14")
         ic = theme.icon_path("app.ico")
         if os.path.exists(ic):
             self.setWindowIcon(QIcon(ic))
@@ -174,11 +174,27 @@ def install_excepthook():
         except OSError:
             pass
         try:
+            # 离屏 / 自检场景一条模态框都不许弹，否则自检不是「失败」而是「卡死」：
+            #   ① 本程序的错误框（exec() 阻塞事件循环）；
+            #   ② PyInstaller 窗口模式对未捕获异常的 "Unhandled exception in script" 框——
+            #      bootloader 行为，实测即使 excepthook 正常返回也照样弹、并永久阻塞进程。
+            # 所以自动化场景把栈打到控制台后直接 os._exit(1)：绕过两者，给门禁确定退出码。
+            auto = (os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+                    or "--shot" in sys.argv or "--shot-dialog" in sys.argv)
+            if auto:
+                sys.__excepthook__(etype, value, tb)
+                os._exit(1)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(None, "包装设计器 · 出错了",
                                  f"{etype.__name__}: {value}\n\n"
                                  "详细信息已写入：\n" + _err_log_path())
         except Exception:
+            pass
+            QMessageBox.critical(None, "包装设计器 · 出错了",
+                                 f"{etype.__name__}: {value}\n\n"
+                                 "详细信息已写入：\n" + _err_log_path())
+        except Exception:
+            pass
             pass
         sys.__excepthook__(etype, value, tb)
 

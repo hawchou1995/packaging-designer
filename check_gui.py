@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "ui"))
 
-from PySide6.QtWidgets import QApplication           # noqa: E402
+from PySide6.QtWidgets import QApplication, QLineEdit, QTabWidget, QWidget   # noqa: E402
 
 import theme                                          # noqa: E402
 
@@ -144,13 +144,87 @@ def main():
             continue
         run_case(app, pg, os.path.join(OUT, tag), tag, tag, report)
 
+    # 6) 对话框冒烟（v1.0.14 新增）：设置/关于 + 图框字段这两处此前**零自动化覆盖**，
+    #    所以「容器 QWidget 被循环变量顶掉 → 连坐 QFormLayout 被析构 → already deleted」
+    #    从 v1.0.0 存活到 v1.0.13。以后构造不成功 / 返回错对象 / 保存不回写，这里直接红。
+    print("\n=== 对话框冒烟（设置/关于 + 图框字段）===")
+    import dialogs as dl
+
+    dlg_checks = []
+
+    def _ck(name, ok, detail=""):
+        dlg_checks.append(bool(ok))
+        print(f"  {'✓' if ok else '✗'} {name}" + (f"  {detail}" if detail else ""))
+        return bool(ok)
+
+    keep = (w.settings.outdir, w.settings.prefix, w.settings.dwg_no, w.settings.proofed)
+    try:
+        sd = dl.SettingsDialog(w.settings, w)
+        _ck("SettingsDialog 构造", True)
+    except Exception as e:                      # 历史故障：RuntimeError QFormLayout already deleted
+        sd = None
+        _ck("SettingsDialog 构造", False, f"{type(e).__name__}: {e}")
+    if sd is not None:
+        page = sd._settings_page
+        _ck("设置页是 QWidget（不是被循环变量顶掉的行编辑框）",
+            isinstance(page, QWidget) and not isinstance(page, QLineEdit), type(page).__name__)
+        need = ("out", "prefix", "company", "author", "dwg_name", "dwg_no", "dwg_version",
+                "dwg_material", "designed", "drawn", "proofed", "checked", "process",
+                "standard", "approved", "date")
+        have = [k for k in need if isinstance(getattr(sd, "e_" + k, None), QLineEdit)]
+        _ck("设置页字段齐（16 项输入框，与 on_save 的 key 一致）",
+            len(have) == len(need), f"{len(have)}/{len(need)}")
+        tabs = sd.findChild(QTabWidget)
+        ok_tab = False
+        if tabs is not None and tabs.count() == 2:
+            try:
+                for i in (0, 1):
+                    tabs.setCurrentIndex(i)
+                    app.processEvents()
+                ok_tab = True
+            except Exception as e:
+                ok_tab = False
+                _ck("设置/关于 两个 tab 切换", False, f"{type(e).__name__}: {e}")
+        else:
+            _ck("设置/关于 两个 tab 存在", False, f"count={getattr(tabs, 'count', lambda: None)()}")
+        _ck("设置/关于 两个 tab 切换", ok_tab)
+        _ck("设置 tab 内容 = _settings_tab 的容器（不是被顶掉的行编辑框）",
+            tabs is not None and tabs.count() == 2 and tabs.widget(0) is sd._settings_page,
+            type(tabs.widget(0)).__name__ if (tabs is not None and tabs.count()) else "n/a")
+        sd.e_out.setText(os.path.join(OUT, "outdir_smoke"))
+        sd.e_prefix.setText("SMOKE")
+        sd.e_dwg_no.setText("SMOKE-1")
+        sd.on_save()
+        _ck("保存写回设置（含图样栏字段）",
+            w.settings.prefix == "SMOKE" and w.settings.dwg_no == "SMOKE-1",
+            f"prefix={w.settings.prefix!r} dwg_no={w.settings.dwg_no!r}")
+        sd.e_out.setText(keep[0])
+        sd.e_prefix.setText(keep[1])
+        sd.e_dwg_no.setText(keep[2])
+        sd.on_save()                            # 收尾复原，别污染后续
+
+    try:
+        fd = dl.FrameDialog(w.settings)
+        _ck("FrameDialog 构造 + 字段齐（14 项）",
+            len(fd.edits) == 14 and all(k in fd.edits for k, _ in dl.FrameDialog.FIELDS))
+        fd.edits["proofed"].setText("校对人")
+        fd.on_save()
+        _ck("FrameDialog 保存生效", w.settings.proofed == "校对人")
+        fd.edits["proofed"].setText(keep[3])
+        fd.on_save()
+    except Exception as e:
+        _ck("FrameDialog 构造/保存", False, f"{type(e).__name__}: {e}")
+
+    bad_dlg = sum(1 for ok in dlg_checks if not ok)
+    print(f"  对话框冒烟：{len(dlg_checks) - bad_dlg}/{len(dlg_checks)} 通过")
+
     print("\n=== GUI 端到端（生成 → 导出）===")
     bad = 0
     for tag, n_gen, n_out, msg, ok, _miss in report:
         bad += 0 if ok else 1
         print(f"  {'✓' if ok else '✗'} {tag:14s} 生成 {n_gen:3d} → 导出 {n_out:3d}  {msg}")
-    print("RESULT:", "PASS" if not bad else f"FAIL {bad}")
-    return 1 if bad else 0
+    print("RESULT:", "PASS" if not bad and not bad_dlg else f"FAIL {bad + bad_dlg}")
+    return 1 if (bad or bad_dlg) else 0
 
 
 if __name__ == "__main__":
