@@ -8,9 +8,10 @@ import importlib.util
 import os
 import sys
 
-NEW = r"D:/Tools/tmp/packapp/core"
-OLD = r"D:/Tools/tmp/fefco0210_build"
-OLD2 = r"D:/Tools/tmp/pack_kk/build"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+NEW = os.path.join(_HERE, "core")            # 本仓库几何（v1.0.14 起相对路径，换目录不再失效）
+OLD = r"D:/Tools/tmp/fefco0210_build"        # 外部参照：已交付验证的旧构建（不在本仓库内）
+OLD2 = r"D:/Tools/tmp/pack_kk/build"         # 外部参照：备选旧构建
 
 
 def load(name, path):

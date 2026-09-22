@@ -732,7 +732,8 @@ def price_lib_rows(d):
 # ================================================================ CLI 冒烟
 if __name__ == "__main__":
     import time
-    out = sys.argv[1] if len(sys.argv) > 1 else r"D:/Tools/tmp/packapp/_smoke"
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "_smoke")   # 相对本文件：换目录不再失效
     os.makedirs(out, exist_ok=True)
     t0 = time.time()
     r = run_sheet(400, 300, 15, os.path.join(out, "sheet"), prefix="SMOKE", name="片材", material="EPE")
