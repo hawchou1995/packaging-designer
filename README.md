@@ -170,6 +170,22 @@
 
 反馈问题时把 `crash.log` 一起发出来即可定位。
 
+### `crash.log` 里的 `code 0x8001010d` 不是崩溃（2026-09-22 排查结论）
+
+`Windows fatal exception: code 0x8001010d` 是 faulthandler 的措辞偏激，它对应 COM 的
+`RPC_E_CANTCALLOUT_ININPUTSYNCCALL`（在派发输入同步呼叫期间发起了跨进程 COM 调用）。
+实测（`RaiseException(0x8001010d)` + `faulthandler.enable()`）：CPython 把它当成**可捕获的
+`OSError`** 交给上层，进程照常活着（退出码 0），**根本不会终止程序**。
+
+本机的来源是安全/加密客户端注入的 hook（同期事件日志里 `wps.exe + kprometheus.dll_unloaded`、
+`DllHost.exe + Krn64.dll` 全是这类注入崩溃）。判定依据：
+① 事件日志里 `PackagingDesigner.exe` 自 2026-09-17 之后**零** Application Error 记录
+（9/17 那两条是旧版 Qt6Core.dll + `0xc0000409` fail-fast）；
+② 记了该异常的那次会话（9/22 11:00）在 11:40 仍在正常处理点击，中间没有新的「会话启动」行。
+
+结论：无需处理。真要消掉这条噪声，只能由 IT 把本程序加入 DGS 排除名单——**不要重启 DGS 客户端**
+（重启会向所有进程重新注入 hook，故障会更频繁）。
+
 ## 制图规范
 
 - 图框：GB 留装订边版式（左 25 / 其余 5，分区带 1-8 / A-F），标题栏为 GB/T 10609.1（ISO 7200）网格化版式 180×56。
