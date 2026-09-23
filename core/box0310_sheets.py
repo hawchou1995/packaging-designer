@@ -72,14 +72,20 @@ def param_lines_zh(p: Params, mat_sleeve: str = "BC 双瓦楞纸板",
         (f"材料：围框 {mat_sleeve} t={g(p.ts)}；盖 {mat_cap} t={g(p.tc)}（参考 GB/T 6544）" if same_caps else
          f"材料：围框 {mat_sleeve} t={g(p.ts)}；下盖 {mat_cap_bot} t={g(p.tc2)}；上盖 {mat_cap} t={g(p.tc)}"),
         f"组装外尺寸：{g(p.L)} × {g(p.W)} × {g(p.H)}（= 盖外尺寸）",
-        f"尺寸链：盖内 = 盖外 − 2·t盖 = {g(p.L-2*p.tcmax)}×{g(p.W-2*p.tcmax)}；围框外 = 盖内 − 2×{g(p.gap)} = {g(p.sleeve_L)}×{g(p.sleeve_W)}；围框制造 {g(p.sleeve_Lm)}×{g(p.sleeve_Wm)}",
+        (f"尺寸链：盖内 = 盖外 − 2·t盖（两盖板厚不同时取较厚盖 {g(p.tcmax)}） = {g(p.L-2*p.tcmax)}×{g(p.W-2*p.tcmax)}；"
+         f"围框外 = 盖内 − 2×{g(p.gap)} = {g(p.sleeve_L)}×{g(p.sleeve_W)}；围框制造 {g(p.sleeve_Lm)}×{g(p.sleeve_Wm)}"
+         + (f"；较薄盖单边余量 {g(abs(p.tc - p.tc2))}（板厚差）" if abs(p.tc - p.tc2) > 1e-9 else "")),
         f"围框：展开 {g(si_s['blank_w'])} × {g(si_s['blank_h'])}（高 = 外高 − t下盖 − t上盖 = {g(p.sleeve_H)}）；侧缝粘合",
         cap_line,
-        f"两盖端对端：每盖罩深 {g(p.d_cover)}（= 围框高/2{'' if p.cover_extra == 0 else ' + ' + g(p.cover_extra)}，两盖在腰线正好对接）",
+        (f"两盖：每盖罩深 {g(p.d_cover)}（固定盖高；两盖间围框外露 "
+         f"{g(max(0.0, p.sleeve_H - 2 * p.d_cover))}）" if p.cap_h_mode == "fixed" else
+         f"两盖端对端：每盖罩深 {g(p.d_cover)}（= 围框高/2"
+         f"{'' if p.cover_extra == 0 else ' + ' + g(p.cover_extra)}，两盖在腰线正好对接）"),
         f"用纸：围框 {si_s['blank_w']*si_s['blank_h']/1e6:.4f} + 下盖 {ci_b['blank_w']*ci_b['blank_h']/1e6:.4f}"
         f" + 上盖 {ci_t['blank_w']*ci_t['blank_h']/1e6:.4f} = {area:.4f} m²",
         "楞向：平行组装高度（竖向）",
-        "注：样式按 FEFCO 官方图（双盖、端对端）；下盖/上盖可分别选楞（板厚不同时展开图各出一张）。",
+        "注：样式按 FEFCO 官方图；盖高可固定（默认 100）或取围框高一半；"
+        "下盖/上盖可分别选楞（围框按较厚盖配间隙）。",
     ]
 
 
@@ -112,11 +118,25 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     gsb = layout_cap(p, "bot")
     gst = layout_cap(p, "top")
     same_caps = abs(p.tc - p.tc2) < 1e-9
-    from drawutil import pick_scale, scale_str, scale_tag
+    from drawutil import pick_scale, scale_str, scale_tag, wrap_mm
+    # ---------------- 版面分区（纸面绝对值 mm，v1.0.15 重做） ----------------
+    # 旧写法把 60/80mm 这类**纸面预留**加进数据尺寸再一起除以比例 → 预留被缩小成
+    # 预留/比例（1:8 时 80mm 只剩 10mm），视图实际比预算多下探几十毫米，压进说明块/标题栏。
+    # 现在：数据尺寸归数据，纸面预留从**可用区**里扣。
+    X0, X1 = 40.0, 290.0        # 绘图区左右界（右 290：轴测列 294 之前）
+    Y_TOP = 262.0               # 图面顶（图名/副标题之下）
+    Y_BOT = 96.0                # 图面底（说明块顶 84 + 12 余量）
+    DIM_L = 17.0                # 图形左侧的竖向尺寸列
+    GAP_V = 40.0                # 围框与两盖之间的间隔
+    DIM_B = 17.0                # 两盖下方的尺寸行
+    GAP_C = 10.0                # 两盖并排的间隔
+    MRG = 6.0                   # 右侧余量
     if not manual:
-        total_w = max(si_s["blank_w"], gsb["W1"] + 60.0 + gst["W1"])
-        total_h = si_s["blank_h"] + 80.0 + max(gsb["H1"], gst["H1"])
-        scale = pick_scale(total_w, total_h, 240.0, 166.0)
+        data_w = max(si_s["blank_w"], gsb["W1"] + gst["W1"])
+        data_h = si_s["blank_h"] + max(gsb["H1"], gst["H1"])
+        scale = pick_scale(data_w, data_h,
+                           (X1 - X0) - (DIM_L + GAP_C + MRG),
+                           (Y_TOP - Y_BOT) - (GAP_V + DIM_B))
 
     pw, ph = page
     fig = plt.figure(figsize=(pw / 25.4, ph / 25.4))
@@ -128,8 +148,9 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     ax.axis("off")
 
     # --- sleeve blank (top) ---
-    ox = 42.0 + max(0.0, (246.0 - si_s["blank_w"] / scale) / 2.0)
-    oy = 262.0 - si_s["blank_h"] / scale
+    _span = (X1 - X0) - DIM_L - MRG          # 去掉左边尺寸列后的居中净宽
+    ox = X0 + DIM_L + max(0.0, (_span - si_s["blank_w"] / scale) / 2.0)
+    oy = Y_TOP - si_s["blank_h"] / scale
     T1 = lambda x, y: (ox + x / scale, oy + y / scale)
     sp = [T1(*q) for q in so] + [T1(*so[0])]
     ax.plot([q[0] for q in sp], [q[1] for q in sp], color="k", lw=0.7)
@@ -158,10 +179,10 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
             fontsize=7.5, ha="left", color="0.1")
 
     # --- cap blanks (bottom row: 下盖 / 上盖，板厚不同则尺寸不同) ---
-    caps_w = (gsb["W1"] + gst["W1"]) / scale + 10.0
-    cap0 = 42.0 + max(0.0, (246.0 - caps_w) / 2.0)
-    cap_ox = [cap0, cap0 + gsb["W1"] / scale + 10.0]
-    cap_top_y = oy - 40.0
+    caps_w = (gsb["W1"] + gst["W1"]) / scale + GAP_C
+    cap0 = X0 + DIM_L + max(0.0, (_span - caps_w) / 2.0)
+    cap_ox = [cap0, cap0 + gsb["W1"] / scale + GAP_C]
+    cap_top_y = oy - GAP_V
     for (k, ox2) in enumerate(cap_ox):
         oy2 = cap_top_y - gsb["H1" if k == 0 else "H1"] / scale if False else cap_top_y - (gsb["H1"] if k == 0 else gst["H1"]) / scale
         which = "bot" if k == 0 else "top"
@@ -181,6 +202,9 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
                  (wb / 2, gs["H1"] / 2, "盖墙+角片"),
                  (gs["W1"] - wb / 2, gs["H1"] / 2, "盖墙+角片"),
                  (wb / 2, gs["H1"] - wb / 2, "角片"), (wb / 2, wb / 2, "角片")]
+        # 右盖的竖向尺寸列画在 cap_ox[1] − 17；左盖右侧的内部标签若会压到它，就省掉这两个标签
+        if k == 0 and (GAP_C - 17.0) < (wb / (2.0 * scale) + 3.0):
+            lab_c = [it for it in lab_c if it[0] <= gs["W1"] / 2.0]
         for (lx, ly, s) in lab_c:
             sx, sy = T2(lx, ly)
             _strip = wb if s != "盖顶板" else min(p.cap_Lm, p.cap_Wm)
@@ -210,8 +234,16 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     lines = meta.get("param_lines") or param_lines_zh(
         p, meta.get("mat_sleeve", "BC 双瓦楞纸板"), meta.get("mat_cap", "BC 双瓦楞纸板"),
         meta.get("mat_cap_bot"))
-    for i, s in enumerate(lines):
-        ax.text(38.0, 84.0 - i * 4.0, s, ha="left", va="top", fontsize=6.2, color="0.1")
+    # 说明块：**一律折到标题栏左侧**（标题栏占 x ≥ 228；38 + 185 = 223 < 228），
+    # 换行后行数变多也不会横向越界（v1.0.15）。纵向从 84 往下排，底线 16。
+    note_lines = []
+    for s in lines:
+        note_lines.extend(wrap_mm(s, 185.0, 6.2))
+    _lh = 4.0
+    if 84.0 - len(note_lines) * _lh < 16.0:      # 极端长文时压行距，保证不越下框
+        _lh = max(3.2, (84.0 - 16.0) / max(1, len(note_lines)))
+    for i, s in enumerate(note_lines):
+        ax.text(38.0, 84.0 - i * _lh, s, ha="left", va="top", fontsize=6.2, color="0.1")
     ax.text(38.0, 14.0, f"字体：{fam}（{fpath or 'fallback'}）", fontsize=5.2, color="0.45")
 
     from box0310_core import panels, lift_items

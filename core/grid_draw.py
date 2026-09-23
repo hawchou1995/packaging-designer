@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from dwgframe import draw_frame
+from dwgframe import draw_frame, _txt_w
 from box0210_2d import dim_h, dim_v, _font_family, save_sheet_png_svg, _today
 from box0210_3d import draw_scene
 from grid_core import PAD_LABEL
@@ -201,9 +201,12 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
         _ftxt = (f" · {_which}各 {fl_net:g} 折边（折 90° 与刀卡垂直，俯视为卡端直角，"
                  f"展开料端部 {fl_out:g} = {fl_net:g}+t）")
     # 视图名排在**尺寸带之上**（6·s + 16mm），否则会落在总长尺寸线上
-    ax.text(T(p.L / 2, 0)[0], T(0, p.W)[1] + 6.0 * s + 16.0,
-            f"网格俯视图（{d['n_l']}×{d['n_w']} 格 × {d['layers']} 层）{_ftxt}",
-            fontsize=8, ha="center", va="bottom")
+    _name = f"网格俯视图（{d['n_l']}×{d['n_w']} 格 × {d['layers']} 层）{_ftxt}"
+    _nl = _wrap_text(_name, 236.0, 8)      # 居中长名字会左右越出内框 → 先折行（v1.0.15）
+    _tw = max(_txt_w(ln, 8) for ln in _nl)
+    _cx = min(max(T(p.L / 2, 0)[0], 36.0 + _tw / 2.0), 406.0 - _tw / 2.0)
+    ax.text(_cx, T(0, p.W)[1] + 6.0 * s + 16.0,
+            "\n".join(_nl), fontsize=8, ha="center", va="bottom")
 
     # ---------------- B 短卡侧视图（右上，旋转 90°：高横向 / 长竖向 / 槽口朝左） ----------------
     # 按**展开料**画（用户口径）：卡体两端各延长 fl_out（= 净长 + 板厚）、同高；原卡端 = 折弯线（点划线）；
@@ -265,12 +268,15 @@ def build_sheet(p, d, scale=None, page=(420.0, 297.0), meta: dict = None):
         for xe in (0.0, p.L):                           # 原卡端 = 折弯线（点划线）
             ax.plot(*zip(Tc(xe, 0), Tc(xe, Hc)), **FOLD_STYLE)
     # 尺寸：本体长 + 两端折边（分两层）+ 展开长；高度标在折边**之外**（右侧），不压图线
-    dim_h(ax, Tc(0.0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], Tc(0, Hc + 10)[1], f"{p.L:g}")
+    # 三条尺寸行的**行距是纸面绝对值**：原来用数据 mm（Hc+10/26/40）→ 大比例时三行只差 1mm，
+    # 标签自己叠自己（v1.0.15 修；横向端点仍取数据坐标，不受影响）
+    _ry = Tc(0, Hc)[1]
+    dim_h(ax, Tc(0.0, Hc + 10)[0], Tc(p.L, Hc + 10)[0], _ry + 5.0, f"{p.L:g}")
     if flc:
-        dim_h(ax, Tc(x_a, Hc + 26)[0], Tc(0.0, Hc + 26)[0], Tc(0, Hc + 26)[1], f"{flc:g}", off=1.2)
-        dim_h(ax, Tc(p.L, Hc + 26)[0], Tc(x_b, Hc + 26)[0], Tc(0, Hc + 26)[1],
+        dim_h(ax, Tc(x_a, Hc + 26)[0], Tc(0.0, Hc + 26)[0], _ry + 10.0, f"{flc:g}", off=1.2)
+        dim_h(ax, Tc(p.L, Hc + 26)[0], Tc(x_b, Hc + 26)[0], _ry + 10.0,
               f"{flc:g}", off=1.2)
-        dim_h(ax, Tc(x_a, Hc + 40)[0], Tc(x_b, Hc + 40)[0], Tc(0, Hc + 40)[1],
+        dim_h(ax, Tc(x_a, Hc + 40)[0], Tc(x_b, Hc + 40)[0], _ry + 15.0,
               f"展开 {x_b - x_a:g}", off=1.5)
     # 高度尺寸：贴在本体右端之外（+6），标签在尺寸线右侧。
     # 不能用 +15：B 视图（右上）的高度/槽深尺寸线横跨 [BX, BX+Hc·s]，

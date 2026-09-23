@@ -815,6 +815,13 @@ class BoxPage(BasePage):
         g.add(self.f_L)
         g.add(self.f_W)
         g.add(self.f_H)
+        # 0310：盖高口径（现场常用「固定 100」；也可取围框高一半）—— v1.0.15
+        self.f_cap_mode = seg_field("盖高口径", [("fixed", "固定高度"), ("half", "整体一半")],
+                                    "fixed", on_change=self.on_cap_mode)
+        self.f_cap_h = num_field("盖高（每盖 mm）", 100.0, 10, 2000, 10, 1,
+                                 hint="现场常用 100", on_change=self._touched)
+        g.add(self.f_cap_mode, span=True)
+        g.add(self.f_cap_h)
         g.next_row()
         c.add(g)
 
@@ -838,7 +845,8 @@ class BoxPage(BasePage):
         g3 = RowGrid(2)
         self.p_rows = {}
         for key, label in PARAM_DEFS:
-            r = num_field(label, 45.0, 0, 200, 1, 1, on_change=self._touched)
+            # hint=" " 让这行有提示位：标准区间/「按围框楞型」等提示才显示得出来（v1.0.15 修）
+            r = num_field(label, 45.0, 0, 200, 1, 1, hint=" ", on_change=self._touched)
             self.p_rows[key] = r
             g3.add(r)
         c3.add(g3)
@@ -874,6 +882,8 @@ class BoxPage(BasePage):
         for key, r in self.flute_rows.items():
             r.setVisible(key in parts)
         self.f_link.setVisible(box == "0310")
+        self.f_cap_mode.setVisible(box == "0310")
+        self.f_cap_h.setVisible(box == "0310" and self.f_cap_mode.seg.value() == "fixed")
         for key, r in self.p_rows.items():
             if key == "gap":
                 r.setVisible(box in ("0310", "0312"))
@@ -883,6 +893,14 @@ class BoxPage(BasePage):
                 r.setVisible(box in ("0201", "0312"))
             else:
                 r.setVisible(True)
+        self._sync_params()
+        self.refresh()
+        self._sync_export_hint()
+
+    def on_cap_mode(self, *_):
+        """盖高口径切换（v1.0.15）：固定高度时才显示盖高输入框。"""
+        box = self._box()
+        self.f_cap_h.setVisible(box == "0310" and self.f_cap_mode.seg.value() == "fixed")
         self._sync_params()
         self.refresh()
         self._sync_export_hint()
@@ -906,13 +924,17 @@ class BoxPage(BasePage):
         fl = self._flutes()
         primary = "cap_top" if box == "0310" else ("lid" if box == "0312" else "body")
         code = fl.get(primary, "BC")
-        d = backend.flute_defaults(code, box)
-        r = backend.ranges_of(code, box)
+        # 0310 的接舌只在围框上 → 接舌宽的默认值与标准区间都按围框楞型取；
+        # 否则围框与盖混搭楞型时，同一个接舌宽不可能同时落进两档区间（v1.0.15 修）
+        sleeve_code = fl.get("sleeve", code)
         for key, row in self.p_rows.items():
             if key == "cover_depth":
                 row.widget.setRange(10.0, max(20.0, self.f_H.widget.value()))
                 row.set_hint("罩深 = 天盖墙高；建议 ≈ 0.45×H，且 ≤ 底箱制造高")
                 continue
+            kc = sleeve_code if (box == "0310" and key == "glue_w") else code
+            d = backend.flute_defaults(kc, box)
+            r = backend.ranges_of(kc, box)
             if key not in d:
                 continue
             lo, hi = (r.get(key) if isinstance(r.get(key), tuple) else (0.0, 10000.0))
@@ -922,7 +944,12 @@ class BoxPage(BasePage):
             row.widget.setRange(lo, hi)
             if not (lo - 1e-9 <= cur <= hi + 1e-9):
                 row.widget.setValue(d[key])
-            row.set_hint(f"标准区间 {lo:g}–{hi:g} mm（{r.get('src', 'GB/T 6543 + 行业实践')}）")
+            tail = "（按围框楞型）" if (box == "0310" and key == "glue_w") else ""
+            src_txt = (r.get("src") if key == "gap"
+                       else backend.ranges_of(kc).get("src", "GB/T 6543 + 行业实践"))
+            row.set_hint(f"标准区间 {lo:g}–{hi:g} mm（{src_txt}）{tail}")
+        if box == "0310":
+            self._sync_cap_h()
         if self.f_allow_mode.seg.value() == "auto":
             self.f_allow.widget.setValue(price_lib.allow_default(code))
             self.f_allow.widget.setEnabled(False)
@@ -935,12 +962,34 @@ class BoxPage(BasePage):
         elif box == "0310":
             self.flute_rows["cap_bottom"].flute.setEnabled(True)
 
+    def _sync_cap_h(self):
+        """0310 盖高联动（v1.0.15）：上限 = 围框高/2（两盖端对端不相撞），口径切换时开关输入框。"""
+        fl = self._flutes()
+        tc = backend.FLUTES[fl.get("cap_top", "BC")]["t"]
+        tcb = backend.FLUTES[fl.get("cap_bottom", fl.get("cap_top", "BC"))]["t"]
+        h_in = self.f_H.widget.value()
+        h_out = h_in + 2 * max(tc, tcb) if self.f_mode.seg.value() == "inner" else h_in
+        hi = max(10.0, (h_out - tc - tcb) / 2.0)
+        cur = self.f_cap_h.widget.value()
+        # 不静默改用户填的盖高：越界时给提示，并由核心给出可行动的报错（v1.0.15）
+        self.f_cap_h.widget.setRange(10.0, 2000.0)
+        if cur > hi + 1e-9:
+            self.f_cap_h.set_hint(f"⚠ {cur:g} > 上限 {hi:g}（围框高/2）：两盖会相撞 —— 改小盖高、"
+                                  f"或整体高 ≥ {2 * cur + tc + tcb:g}、或选「整体一半」")
+        else:
+            self.f_cap_h.set_hint(f"现场常用 100；当前上限 {hi:g} = 围框高/2，两盖端对端不打架")
+        self.f_cap_h.widget.setEnabled(self.f_cap_mode.seg.value() == "fixed")
+
     # ---------------- 计算 ----------------
     def _params(self):
         out = {}
         for key, row in self.p_rows.items():
             if row.isVisible():
                 out[key] = row.widget.value()
+        if self._box() == "0310":
+            out["cap_h_mode"] = self.f_cap_mode.seg.value()
+            if out["cap_h_mode"] == "fixed":
+                out["cap_h"] = self.f_cap_h.widget.value()
         return out
 
     def _price(self):
@@ -960,6 +1009,8 @@ class BoxPage(BasePage):
                                 params=self._params(), price=self._price())
 
     def refresh(self):
+        if self._box() == "0310":
+            self._sync_cap_h()          # H/楞型变了，盖高上限提示要跟着变（v1.0.15）
         try:
             plan = self._plan()
         except (Exception, SystemExit) as e:

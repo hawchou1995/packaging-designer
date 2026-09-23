@@ -22,6 +22,24 @@ def pick_scale(w, h, avail_w, avail_h, scales=SCALES, margin=0.0):
     return float(scales[-1])
 
 
+def wrap_mm(s, width_mm, fs):
+    """按中文宽度估算法折行（CJK ≈ fs pt，西文 ≈ 0.55×），返回行列表。
+    图纸上的说明文字一律先折到「标题栏左侧」这类硬边界内，再落笔。"""
+    cjk = fs * 25.4 / 72.0
+    asc = cjk * 0.55
+    out, cur, w = [], "", 0.0
+    for ch in str(s):
+        cw = cjk if ord(ch) > 0x2000 else asc
+        if cur and w + cw > width_mm:
+            out.append(cur)
+            cur, w = "", 0.0
+        cur += ch
+        w += cw
+    if cur:
+        out.append(cur)
+    return out or [""]
+
+
 def scale_str(scale: float) -> str:
     """比例文本：1:5 / 2:1（放大）。"""
     scale = float(scale)

@@ -152,7 +152,7 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     dim_h(ax, T1(lb["X0"], 0)[0], T1(lb["X5"], 0)[0], yb2, "展开长 " + g(lb["X5"] - lb["X0"]))
     dim_v(ax, T1(0, lb["Y0"] - p.base_fo)[1], T1(0, lb["Y0"])[1], ox - 7.0, g(p.base_fo))
     dim_v(ax, T1(0, lb["Y0"])[1], T1(0, lb["Y1"])[1], ox - 7.0, g(lb["Y1"]))
-    ax.text(ox - 12.0, oy + bi["blank_h"] / scale + 2.5, "底箱（HSC，×1）",
+    ax.text(max(36.0, ox - 12.0), oy + bi["blank_h"] / scale + 2.5, "底箱（HSC，×1）",
             fontsize=7.0, ha="left", color="0.1")
 
     # ---------------- lid blank (right) ----------------

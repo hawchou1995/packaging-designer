@@ -21,6 +21,11 @@ class Params:
     t_sleeve: float = 0.0       # 围框纸板厚度；0 → 与 t 相同
     t_cap_bot: float = 0.0      # 下盖纸板厚度；0 → 与 t 相同
     glue_w: float = 45.0
+    # 盖高口径（v1.0.15）：fixed = 固定盖高 cap_h（现场常用 100，中段围框外露）；
+    # half = 围框高/2，两盖在腰线对接（旧口径）。UI 默认 fixed 100；程序默认 half
+    # 以保持既有脚本与已交付样箱的口径不变。
+    cap_h_mode: str = "half"
+    cap_h: float = 100.0
     glue_inset: float = 4.0
     gap: float = 2.0            # per-side clearance: cap inner vs sleeve outer
     cover_extra: float = 0.0    # 0 -> the two caps meet exactly at the waist line
@@ -46,7 +51,10 @@ class Params:
     @property
     def sleeve_H(self): return self.H - self.tc - self.tc2           # 围框高 = 外高 − 两盖板厚
     @property
-    def d_cover(self): return self.sleeve_H / 2.0 + self.cover_extra   # 93（两盖对半）
+    def d_cover(self):
+        """每盖罩深：fixed = 固定盖高（现场口径）；half = 围框高/2（两盖腰线对接）。"""
+        base = self.cap_h if (self.cap_h_mode == "fixed" and self.cap_h > 0) else self.sleeve_H / 2.0
+        return base + self.cover_extra
     @property
     def wall_blank(self): return self.d_cover + self.tc / 2.0          # 上盖角片宽 BLD
     @property
@@ -136,22 +144,25 @@ def panels(p: Params):
     add("sleeve_right", (ts, Wm, Hs), (Lm / 2, 0, z0 + Hs / 2))
     add("sleeve_lap", (p.glue_w, ts, Hs - 8.0), (-Lm / 2 + p.glue_w / 2, Wm / 2 - ts, z0 + Hs / 2))
 
-    wall_h = p.d_cover                     # 95 (folded wall face height)
-    # bottom cap: panel z 0..tc2 ; walls run to the full outer envelope (z 0..tc2+wall_h)
+    wall_h = p.d_cover                     # 每盖墙深（fixed = 固定盖高 / half = 围框高/2）
+    # 下盖：顶板 z 0..tc2，墙条 z 0..(tc2 + wall_h)
     add("cap_bot_panel", (p.cap_Lm_bot, p.cap_Wm_bot, tb2), (0, 0, h2), "cap_bot")
     zbc = (tb2 + wall_h) / 2.0
-    wh = tb2 + wall_h
-    add("cap_bot_wall_l", (tb2, p.cap_Wm_bot, wh), (-p.cap_Lm_bot / 2, 0, zbc), "cap_bot")
-    add("cap_bot_wall_r", (tb2, p.cap_Wm_bot, wh), (p.cap_Lm_bot / 2, 0, zbc), "cap_bot")
-    add("cap_bot_wall_f", (p.cap_Lm_bot, tb2, wh), (0, -p.cap_Wm_bot / 2, zbc), "cap_bot")
-    add("cap_bot_wall_b", (p.cap_Lm_bot, tb2, wh), (0, p.cap_Wm_bot / 2, zbc), "cap_bot")
-    # top cap: panel z H-tc..H ; walls run down to the full outer envelope (z H-tc-wall_h..H)
+    wh_bot = tb2 + wall_h
+    add("cap_bot_wall_l", (tb2, p.cap_Wm_bot, wh_bot), (-p.cap_Lm_bot / 2, 0, zbc), "cap_bot")
+    add("cap_bot_wall_r", (tb2, p.cap_Wm_bot, wh_bot), (p.cap_Lm_bot / 2, 0, zbc), "cap_bot")
+    add("cap_bot_wall_f", (p.cap_Lm_bot, tb2, wh_bot), (0, -p.cap_Wm_bot / 2, zbc), "cap_bot")
+    add("cap_bot_wall_b", (p.cap_Lm_bot, tb2, wh_bot), (0, p.cap_Wm_bot / 2, zbc), "cap_bot")
+    # 上盖：顶板 z H-tc..H，墙条 z (H - tc - wall_h)..H
+    # （v1.0.15：上盖墙高必须用 tc，不能复用下盖的 tb2 —— 两盖板厚不同时上盖会高出 (tc2-tc)/2
+    #   把闭合 bbox 顶穿，用户端表现为「混搭楞型生成失败：bbox (L, W, H+Δ)」）
     add("cap_top_panel", (p.cap_Lm, p.cap_Wm, tc), (0, 0, p.H - h), "cap_top")
     ztc = p.H - (tc + wall_h) / 2.0
-    add("cap_top_wall_l", (tc, p.cap_Wm, wh), (-p.cap_Lm / 2, 0, ztc), "cap_top")
-    add("cap_top_wall_r", (tc, p.cap_Wm, wh), (p.cap_Lm / 2, 0, ztc), "cap_top")
-    add("cap_top_wall_f", (p.cap_Lm, tc, wh), (0, -p.cap_Wm / 2, ztc), "cap_top")
-    add("cap_top_wall_b", (p.cap_Lm, tc, wh), (0, p.cap_Wm / 2, ztc), "cap_top")
+    wh_top = tc + wall_h
+    add("cap_top_wall_l", (tc, p.cap_Wm, wh_top), (-p.cap_Lm / 2, 0, ztc), "cap_top")
+    add("cap_top_wall_r", (tc, p.cap_Wm, wh_top), (p.cap_Lm / 2, 0, ztc), "cap_top")
+    add("cap_top_wall_f", (p.cap_Lm, tc, wh_top), (0, -p.cap_Wm / 2, ztc), "cap_top")
+    add("cap_top_wall_b", (p.cap_Lm, tc, wh_top), (0, p.cap_Wm / 2, ztc), "cap_top")
     return out
 
 
@@ -176,8 +187,21 @@ def check(p: Params):
         errs.append("sleeve height chain mismatch")
     if abs(i_c["blank_w"] - (p.cap_Lm + 2 * p.wall_blank)) > 1e-9:
         errs.append("cap blank width mismatch")
-    if abs(p.cap_Lm - (p.sleeve_L + p.tcmax + 2 * p.gap)) > 1e-9:
-        errs.append("cap/sleeve length chain mismatch")
+    # 尺寸链（两盖板厚可不同 → 围框按较厚盖定位）：
+    #   围框外 + 2×间隙 + 2×较厚盖板厚 = 盖外长/宽；且围框必须同时套得进两只盖的内腔
+    for tag, outer, sl in (("长", p.L, p.sleeve_L), ("宽", p.W, p.sleeve_W)):
+        if abs((sl + 2 * p.gap + 2 * p.tcmax) - outer) > 1e-9:
+            errs.append(f"{tag}向尺寸链不一致：围框外 + 2×间隙 + 2×较厚盖厚 ≠ 盖外{tag}")
+        for nm, ti in (("上盖", p.tc), ("下盖", p.tc2)):
+            if sl + 2 * p.gap > outer - 2 * ti + 1e-9:
+                errs.append(f"围框外{tag}放不进{nm}内腔（{nm}板厚 {ti:g}）")
+    if p.cap_h_mode == "fixed" and p.cap_h > 0:
+        if p.cap_h < 10.0 - 1e-9:
+            errs.append(f"固定盖高 {p.cap_h:g} 太小：须 ≥ 10 mm")
+        if 2 * p.d_cover > p.sleeve_H + 1e-9:
+            errs.append(f"固定盖高 {p.cap_h:g}×2 = {2 * p.cap_h:g} 大于围框高 {p.sleeve_H:g}"
+                        f"（两盖会在腰线相撞）：盖高改 ≤ {p.sleeve_H / 2:g}，"
+                        f"或整体外高 ≥ {2 * p.cap_h + p.tc + p.tc2:g}，或改选「整体一半」")
     return errs
 
 
@@ -195,7 +219,9 @@ def report(p: Params):
         ("盖 外 / 内", f"{p.L:g}×{p.W:g} / {p.L - 2 * p.tcmax:g}×{p.W - 2 * p.tcmax:g}"),
         ("围框外尺寸", f"{p.sleeve_L:g} × {p.sleeve_W:g} × {p.sleeve_H:g}"),
         ("围框制造", f"{p.sleeve_Lm:g} × {p.sleeve_Wm:g}"),
-        ("罩深 d（每盖，端对端）", f"{p.d_cover:g}"),
+        ("盖高口径", (f"固定 {p.cap_h:g}（每盖）" if p.cap_h_mode == "fixed"
+                      else f"整体一半（围框高/2 = {p.sleeve_H / 2:g}）")),
+        ("罩深 d（每盖）", f"{p.d_cover:g}"),
         ("墙板宽 BLD", f"上盖 {p.wall_blank:g} / 下盖 {p.wall_blank_bot:g}"),
         ("盖顶板", f"上盖 {p.cap_Lm:g}×{p.cap_Wm:g} / 下盖 {p.cap_Lm_bot:g}×{p.cap_Wm_bot:g}"),
         ("围框展开", f"{i_s['blank_w']:g} × {i_s['blank_h']:g}"),

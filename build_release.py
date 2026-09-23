@@ -56,7 +56,7 @@ def verify(dist_dir):
 
 
 def main():
-    dist = sys.argv[1] if len(sys.argv) > 1 else "dist114"   # 默认必须跟 installer/setup.nsi 的 SRC_DIR 一致
+    dist = sys.argv[1] if len(sys.argv) > 1 else "dist115"   # 默认必须跟 installer/setup.nsi 的 SRC_DIR 一致
     print(f"=== 打包 {dist} ===")
     r = subprocess.run([PYI, "--noconfirm", "--clean",
                         "--distpath", os.path.join(HERE, dist),

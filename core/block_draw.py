@@ -104,7 +104,9 @@ def build_sheet(p, d, page=(420.0, 297.0), meta: dict = None, scale: float = Non
     dim_v(ax, Tt(0, 0)[1], Tt(0, p.W)[1], Tt(-20, 0)[0], f"{p.W:g}", fs=7, off=-3.4)
     if not d["through"]:
         dim_v(ax, Tt(b0 - 4, d["sy0"])[1], Tt(b0 - 4, d["sy1"])[1], Tt(b0 - 4, 0)[0], f"{p.sw:g}", fs=6.4, off=-2.6)
-    ax.text(Tt(p.L / 2, 0)[0], Tt(0, 0)[1] - 2.6, f"俯视图（开槽 {d['n']} 个 · 间距 {p.gap:g}）",
+    # 视图名放到总长尺寸标签之下（原来只差 0.1mm，字框相交；v1.0.15）
+    ax.text(Tt(p.L / 2, 0)[0], min(Tt(0, 0)[1] - 9.0, Tt(0, -58)[1] - 6.0),
+            f"俯视图（开槽 {d['n']} 个 · 间距 {p.gap:g}）",
             fontsize=8, ha="center", va="top")
 
     # ---- 左视图（第一角，前=右侧）：外形全高 W×H；槽为后置隐藏轮廓（虚线） ----

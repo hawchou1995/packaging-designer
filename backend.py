@@ -484,7 +484,12 @@ def _flute_short(box, flutes):
 def _validate(box, flutes, params):
     for code in set(flutes.values()):
         r = ranges_of(code, box)
-        for k in ("glue_w", "flap_gain", "flap_reduce", "slot_w"):
+        keys = ("glue_w", "flap_gain", "flap_reduce", "slot_w")
+        if box == "0310" and code != flutes["sleeve"]:
+            # 0310 的接舌只在围框上（两盖是无接舌的角片盘）→ 接舌宽只按围框楞型校验；
+            # 否则围框与两盖混搭楞型时，同一个接舌宽无法同时落进两档区间（v1.0.15 修）
+            keys = ("flap_gain", "flap_reduce", "slot_w")
+        for k in keys:
             v = params.get(k)
             if v is not None and isinstance(r.get(k), tuple):
                 lo, hi = r[k]
@@ -528,11 +533,13 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price
     elif box == "0310":
         from box0310_core import Params, report
         cs, ct, cb = flutes["sleeve"], flutes["cap_top"], flutes["cap_bottom"]
-        d = flute_defaults(ct, box)
+        d = flute_defaults(cs, box)          # 接舌/间隙按围框楞型（接舌只在围框上）
         p = Params(L=L, W=W, H=H, t=FLUTES[ct]["t"], t_sleeve=FLUTES[cs]["t"],
                    t_cap_bot=FLUTES[cb]["t"],
                    glue_w=params.get("glue_w", d["glue_w"]),
                    gap=params.get("gap", d["gap"]),
+                   cap_h_mode=params.get("cap_h_mode", "half"),
+                   cap_h=params.get("cap_h", 100.0),
                    cover_extra=params.get("cover_extra", 0.0))
     else:
         from box0312_core import Params, report

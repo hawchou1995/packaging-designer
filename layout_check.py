@@ -149,8 +149,113 @@ def _grade_gap(used, best):
         return None
 
 
+# ---------------- 版面体检（v1.0.15 新增）：越框 / 压标题栏 / 压字 / 线压说明 ----------------
+# 旧的两个检查都看不见这些：A) 只在**同一坐标轴内**比文字与线，且带白底遮罩的文字会被跳过；
+# B) 只看文字**位置**是否越出内框。于是「注释伸进标题栏」「尺寸数字压注释行」「视图名越框」
+# 这类版面缺陷长期报 0（用户 2026-09-23 当场指出）。这里统一折算成纸面 mm 做几何判定。
+FRAME = (32.0, 12.0, 408.0, 285.0)          # 内框
+TITLE_BLOCK = (228.0, 12.0, 408.0, 68.0)    # 右下标题栏
+NOTE_HEADS = ("技术要求", "注：", "图例", "箱型", "材料", "尺寸链", "围框：", "盖（",
+              "两盖", "用纸", "楞向", "底箱", "天盖", "展开", "1.", "2.", "3.",
+              "4.", "5.", "6.", "7.", "8.")
+
+
+def seg_rect_hit(p, q, r):
+    """线段 pq 与矩形 r 是否相交（端点在框内 or 与四边真正相交）。r=(x0,y0,x1,y1)。"""
+    x0, y0, x1, y1 = r
+    if x1 < x0:
+        x0, x1 = x1, x0
+    if y1 < y0:
+        y0, y1 = y1, y0
+
+    def ins(pt):
+        return x0 <= pt[0] <= x1 and y0 <= pt[1] <= y1
+
+    if ins(p) or ins(q):
+        return True
+
+    def cr(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def inter(a, b, c, d):
+        d1, d2 = cr(c, d, a), cr(c, d, b)
+        d3, d4 = cr(a, b, c), cr(a, b, d)
+        return ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))
+
+    return any(inter(p, q, c, d) for c, d in (
+        ((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)),
+        ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))))
+
+
+def collect_mm(fig):
+    """内容元素（线段 + 文字）统一折算成纸面 mm；含轴测图轴，排除图框 overlay 轴。"""
+    k = 25.4 / fig.dpi
+    segs, texts = [], []
+    for ax in fig.get_axes():
+        if ax.get_zorder() >= 50:
+            continue
+        tr = ax.transData
+        for ln in ax.lines:
+            xs, ys = ln.get_xdata(), ln.get_ydata()
+            for i in range(len(xs) - 1):
+                a = [v * k for v in tr.transform((xs[i], ys[i]))]
+                b = [v * k for v in tr.transform((xs[i + 1], ys[i + 1]))]
+                if math.dist(a, b) > 0.6:
+                    segs.append((a[0], a[1], b[0], b[1]))
+        for t in ax.texts:
+            s = t.get_text().strip()
+            if not s:
+                continue
+            try:
+                bb = t.get_window_extent(renderer=fig.canvas.get_renderer())
+            except Exception:
+                continue
+            texts.append((s, bb.x0 * k, bb.y0 * k, bb.x1 * k, bb.y1 * k))
+    return segs, texts
+
+
+def _in_rect(t, r):
+    return (t[1] >= r[0] - 0.3 and t[3] <= r[2] + 0.3
+            and t[2] >= r[1] - 0.3 and t[4] <= r[3] + 0.3)
+
+
+def frame_audit(fig, tag):
+    """→ 问题清单 [(类别, 内容, 位置/数量, y)]。"""
+    fig.canvas.draw()
+    segs, texts = collect_mm(fig)
+    out = []
+    for t in texts:
+        if not _in_rect(t, FRAME):
+            out.append(("越框", t[0][:34], round(t[1], 1), round(t[2], 1)))
+    for t in texts:
+        if _in_rect(t, TITLE_BLOCK):        # 标题栏自带字段不算
+            continue
+        if not (t[3] < TITLE_BLOCK[0] + 0.3 or t[1] > TITLE_BLOCK[2] - 0.3
+                or t[4] < TITLE_BLOCK[1] + 0.3 or t[2] > TITLE_BLOCK[3] - 0.3):
+            out.append(("压标题栏", t[0][:34], round(t[1], 1), round(t[2], 1)))
+    for i in range(len(texts)):
+        for j in range(i + 1, len(texts)):
+            a, b = texts[i], texts[j]
+            w = min(a[3], b[3]) - max(a[1], b[1])
+            h = min(a[4], b[4]) - max(a[2], b[2])
+            # 交叠高度要够「一个字高」的 1/4 才算压字：CJK 字体的行框比行距高，
+            # 多行文字（同一段落的相邻行）会假阳性 —— 已用视觉复核确认（2026-09-23）。
+            if w > 0 and h > 0 and w * h > 1.0 and h >= 0.25 * min(a[4] - a[2], b[4] - b[2]):
+                out.append(("压字", f"{a[0][:18]} × {b[0][:18]}", round(w * h, 1),
+                            round(max(a[1], b[1]), 1)))
+    for t in texts:
+        if not t[0].startswith(NOTE_HEADS):
+            continue
+        n = sum(1 for s in segs
+                if seg_rect_hit((s[0], s[1]), (s[2], s[3]), (t[1], t[2], t[3], t[4])))
+        if n:
+            out.append(("线压说明", t[0][:30], n, round(t[2], 1)))
+    return out
+
+
 def main():
     only = sys.argv[1] if len(sys.argv) > 1 else None
+    bad_cases = 0
     cases = []
 
     sc = load("sc", os.path.join(CORE, "sheet_core.py"))
@@ -194,6 +299,24 @@ def main():
         c310.Params(L=1200, W=800, H=600, t=12, t_sleeve=12, t_cap_bot=7)), (240.0, 166.0)))
     cases.append(("纸箱0312-400", "box", lambda: s312.build_sheet(c312.Params(L=400, W=300, H=200)), (240.0, 166.0)))
     cases.append(("纸箱0312-大", "box", lambda: s312.build_sheet(c312.Params(L=1100, W=800, H=620, t=10, t_base=10)), (240.0, 166.0)))
+    # v1.0.15 补：用户 2026-09-23 指出的版面缺陷算例（这些在旧检查器下一律报 0）
+    cases.append(("0310 固定盖高100", "box", lambda: s310.build_sheet(
+        c310.Params(L=400, W=300, H=400, t=7, t_sleeve=7, t_cap_bot=7,
+                    cap_h_mode="fixed", cap_h=100.0)), (240.0, 166.0)))
+    cases.append(("0312 412×312×194 罩深87", "box", lambda: s312.build_sheet(
+        c312.Params(L=412, W=312, H=194, t=7, t_base=7, cover_depth=87.0)), (240.0, 166.0)))
+    cases.append(("网格 版1 300×200×150", "grid", lambda: gd.build_sheet(
+        gc.Params(L=300, W=200, H=150, pl=40, pw=25, ph=50, t=3, version=1),
+        gc.report(gc.Params(L=300, W=200, H=150, pl=40, pw=25, ph=50, t=3, version=1))[2]),
+        (187.0, 247.0)))
+    cases.append(("网格 版2 1600×1000×900", "grid", lambda: gd.build_sheet(
+        gc.Params(L=1600, W=1000, H=900, pl=120, pw=80, ph=150, t=7, version=2),
+        gc.report(gc.Params(L=1600, W=1000, H=900, pl=120, pw=80, ph=150, t=7, version=2))[2]),
+        (187.0, 247.0)))
+    cases.append(("仿形块 2500×150×200", "block", lambda: bd.build_sheet(
+        bc.Params(L=2500, W=150, H=200, sl=60, sw=100, sh=60, gap=60),
+        bc.report(bc.Params(L=2500, W=150, H=200, sl=60, sw=100, sh=60, gap=60))[2]),
+        (244.0, 128.0)))
 
     for tag, mod, mk, region in cases:
         if only and only not in tag and only != mod:
@@ -213,8 +336,22 @@ def main():
             print(f"  越内框文字：{len(outside)} 处")
             for o in outside[:5]:
                 print(f"     · 「{o[1]}」 at ({o[2]}, {o[3]})")
+        aud = frame_audit(fig, tag)
+        if aud:
+            bad_cases += 1
+            print(f"  版面体检：{len(aud)} 处（越框/压标题栏/压字/线压说明）")
+            for a in aud[:8]:
+                print(f"     · {a[0]}：{a[1]}  ({a[2]}, y={a[3]})")
+        else:
+            print("  版面体检：0 处")
         plt.close(fig)
 
+
+
+    if bad_cases:
+        print(f"\n版面体检：{bad_cases} 个算例有问题（越框 / 压标题栏 / 压字 / 线压说明）")
+        sys.exit(1)
+    print("\n版面体检：全部算例通过（越框 / 压标题栏 / 压字 / 线压说明 均为 0）")
 
 
 def connectivity_check(fig, tag, tol=0.35):

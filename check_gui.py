@@ -129,10 +129,26 @@ def main():
     for box, tag in (("0201", "0201"), ("0310", "0310"), ("0312", "0312")):
         pg.f_box.seg.set_value(box); pg.on_box_changed()
         if box == "0310":
+            # v1.0.15：①围框与两盖混搭楞型不得再报「接舌宽超出标准区间」
+            #          ②盖高两口径（固定 100 / 整体一半）都要能算，太高时给可行动的报错
+            pg.f_L.widget.setValue(400.0); pg.f_W.widget.setValue(300.0)
+            pg.f_H.widget.setValue(400.0)                      # 围框高 393 → 两盖各 100 放得下
             pg.f_link.widget.setChecked(False); pg.on_flute_changed()
-            pg.flute_rows["sleeve"].flute.set_value("ABC")
-            pg.flute_rows["cap_top"].flute.set_value("ABC"); pg.on_flute_changed()
-            pg.flute_rows["cap_bottom"].flute.set_value("BC-K"); pg.refresh()
+            pg.flute_rows["sleeve"].flute.set_value("BC")      # 围框双瓦（接舌 45–50）
+            pg.flute_rows["cap_top"].flute.set_value("B")      # 上盖单瓦（接舌 35–40）→ 混搭
+            pg.on_flute_changed()
+            pg.flute_rows["cap_bottom"].flute.set_value("C")   # 下盖单瓦
+            pg.refresh()
+            print("  0310 混搭楞型(围框BC/上盖B/下盖C) + 固定盖高100:",
+                  "可生成" if pg.btn_gen.isEnabled() else "被阻断: " + pg.busy.status.text()[:70],
+                  "| 接舌宽", pg.p_rows["glue_w"].widget.value())
+            pg.f_cap_mode.seg.set_value("half"); pg.on_cap_mode()
+            print("  0310 盖高=整体一半:", "可生成" if pg.btn_gen.isEnabled() else "被阻断")
+            pg.f_cap_mode.seg.set_value("fixed"); pg.on_cap_mode()
+            pg.f_H.widget.setValue(200.0); pg._touched()       # 太矮 → 必须拦下并说明怎么改
+            print("  0310 盖高超围框高时拦下:", not pg.btn_gen.isEnabled(),
+                  "|", pg.busy.status.text()[:74])
+            pg.f_H.widget.setValue(400.0); pg._touched()
         if box == "0312":
             pg.f_mode.seg.set_value("inner"); pg._touched()
             pg.f_L.widget.setValue(380); pg.f_W.widget.setValue(280); pg.f_H.widget.setValue(180)
