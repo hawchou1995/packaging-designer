@@ -166,6 +166,22 @@ def panels(p: Params):
     return out
 
 
+# ---------------- 爆炸图（v1.0.16） ----------------
+def explode_items(items, p: Params, gap: float = None):
+    """把三件（围框 / 上盖 / 下盖）沿组装轴拉开成**爆炸图**：上盖向上、下盖向下。
+
+    位移量按**尺寸链**算，保证「件与件之间留出可见间隙、且互不穿插」——
+    旧实现固定 −70 / +110：下盖墙顶抬升后仍落在围框的高度区间**内部**（重叠约 30mm），
+    上盖底只比围框顶高 3mm，看上去和闭合状态差不多（用户 2026-09-23 反馈）。
+    间隙 g 默认 = 每盖罩深（现场固定盖高 100 → 100），并夹在围框高的 25%~60% 之间。
+    """
+    hs, dc = p.sleeve_H, p.d_cover
+    g = float(gap) if gap is not None else min(max(dc, 0.25 * hs), 0.60 * hs)
+    dz = dc + g                       # 让「围框端面 ↔ 盖端面」正好留出 g
+    out = lift_items(items, "cap_bot", -dz)
+    return lift_items(out, "cap_top", dz)
+
+
 def lift_items(items, group="cap_top", dz=130.0):
     out = []
     for it in items:

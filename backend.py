@@ -481,27 +481,45 @@ def _flute_short(box, flutes):
     return f"底箱 {cb_} t={FLUTES[cb_]['t']:g} / 天盖 {cl} t={FLUTES[cl]['t']:g}"
 
 
+# 工艺参数归属（v1.0.16）：每个参数只长在**某一个部件**上，默认值 / 标准区间 / 校验
+# 一律按那个部件的楞型取 —— 混搭楞型时同一个值不可能同时落进两档区间。
+#   接舌（粘舌）在围框（0310）或底箱（0312）上；摇盖加放/折减/开槽也都在底箱摇盖上；
+#   两盖（0310）与天盖（0312）是角片 / 包角粘合结构，不参与这些区间 —— 所以
+#   「底箱 BC + 天盖 C」这类混搭以前必然报错（拿两档区间同时卡一个值）。
+PARAM_OWNER = {
+    "0201": {"glue_w": "body", "flap_gain": "body", "flap_reduce": "body", "slot_w": "body"},
+    "0310": {"glue_w": "sleeve"},
+    "0312": {"glue_w": "base", "flap_gain": "base", "flap_reduce": "base", "slot_w": "base"},
+}
+
+
+def param_owner(box, key):
+    """该工艺参数由哪个部件的楞型决定（无归属 → None）。"""
+    return PARAM_OWNER.get(box, {}).get(key)
+
+
 def _validate(box, flutes, params):
-    for code in set(flutes.values()):
+    for k, v in params.items():
+        if v is None:
+            continue
+        owner = param_owner(box, k)
+        if owner is None:
+            continue
+        code = flutes.get(owner)
         r = ranges_of(code, box)
-        keys = ("glue_w", "flap_gain", "flap_reduce", "slot_w")
-        if box == "0310" and code != flutes["sleeve"]:
-            # 0310 的接舌只在围框上（两盖是无接舌的角片盘）→ 接舌宽只按围框楞型校验；
-            # 否则围框与两盖混搭楞型时，同一个接舌宽无法同时落进两档区间（v1.0.15 修）
-            keys = ("flap_gain", "flap_reduce", "slot_w")
-        for k in keys:
-            v = params.get(k)
-            if v is not None and isinstance(r.get(k), tuple):
-                lo, hi = r[k]
-                if not (lo - 1e-9 <= float(v) <= hi + 1e-9):
-                    raise ValueError(f"{k} = {float(v):g} 超出标准区间 {lo:g}–{hi:g}"
-                                     f"（{FLUTES[code]['name']}）")
-        key = "gap" if box == "0310" else ("box_gap" if box == "0312" else None)
-        v = params.get("gap")
-        if key and v is not None and isinstance(r.get(key), tuple):
-            lo, hi = r[key]
-            if not (lo - 1e-9 <= float(v) <= hi + 1e-9):
-                raise ValueError(f"间隙 {float(v):g} mm 超出区间 {lo:g}–{hi:g}")
+        if not isinstance(r.get(k), tuple):
+            continue
+        lo, hi = r[k]
+        if not (lo - 1e-9 <= float(v) <= hi + 1e-9):
+            raise ValueError(f"{k} = {float(v):g} 超出标准区间 {lo:g}–{hi:g}"
+                             f"（{FLUTES[code]['name']}）")
+    key = "gap" if box == "0310" else ("box_gap" if box == "0312" else None)
+    v = params.get("gap")
+    if key and v is not None:
+        r = ranges_of(flutes.get("sleeve" if box == "0310" else "base"), box)
+        lo, hi = r.get(key, (1.0, 3.0))
+        if not (lo - 1e-9 <= float(v) <= hi + 1e-9):
+            raise ValueError(f"间隙 {float(v):g} mm 超出区间 {lo:g}–{hi:g}")
 
 
 def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price=None):
@@ -544,10 +562,12 @@ def box_plan(box, dims, mode="outer", flutes=None, params=None, name=None, price
     else:
         from box0312_core import Params, report
         cb_, cl = flutes["base"], flutes["lid"]
-        d = flute_defaults(cl, box)
+        d = flute_defaults(cb_, box)          # 接舌/摇盖长在底箱上 → 默认值按**底箱**楞型
+        d_lid = flute_defaults(cl, box)       # 天盖粘舌（3D 包角表达）按其自身楞型
         cover_default = max(30.0, round(H * 0.45))
         p = Params(L=L, W=W, H=H, t=FLUTES[cl]["t"], t_base=FLUTES[cb_]["t"],
                    glue_w=params.get("glue_w", d["glue_w"]),
+                   lid_glue_w=d_lid["glue_w"],
                    gap=params.get("gap", d["gap"]),
                    cover_depth=params.get("cover_depth", cover_default),
                    flap_gain=params.get("flap_gain", d["flap_gain"]),
@@ -644,10 +664,10 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None,
         return Result(files, rows)
 
     if box == "0310":
-        from box0310_core import panels, lift_items
+        from box0310_core import panels, explode_items
         from box0310_sheets import write_dxf, build_sheet
         ic = build_items_from(panels(p), False)
-        io_ = lift_items(lift_items(ic, "cap_bot", -70.0), "cap_top", 110.0)
+        io_ = explode_items(ic, p)          # 爆炸图：位移按尺寸链算（v1.0.16）
         files.append(write_dxf(p, os.path.join(outdir, pre + "展开图_dieline_1-1.dxf")))
         fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
         rows += _scale_row(fig)
@@ -669,7 +689,10 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None,
             stl_check(fp)
             files.append(fp)
             files += render_view(p, lab == "分解", os.path.join(outdir, pre + f"轴测图-{lab}"),
-                                 items=it_, title=f"{plan['name']} · {plan['desc']} · {lab}")
+                                 items=it_,
+                                 title=f"{plan['name']} · {plan['desc']} · "
+                                       + ("组装状态" if lab == "组装"
+                                          else "爆炸图（上盖 / 围框 / 下盖分离）"))
         files.append(_md(outdir, pre + "参数表.md", [
             "# FEFCO 0310 围框+两盖 参数表", ""] +
             [f"- {k}：{v}" for k, v in box_dim_rows(box, p)] +
@@ -681,10 +704,10 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None,
                if plan.get("quote") else [])))
         return Result(files, rows)
 
-    from box0312_core import panels, lift_items
+    from box0312_core import panels, explode_items
     from box0312_sheets import write_dxf, build_sheet
     ic = build_items_from(panels(p), False)
-    io_ = lift_items(ic, "lid", 120.0)
+    io_ = explode_items(ic, p)             # 爆炸图：位移按尺寸链算（v1.0.16）
     files.append(write_dxf(p, os.path.join(outdir, pre + "展开图_dieline_1-1.dxf")))
     fig = build_sheet(p, items_closed=ic, items_open=io_, meta=meta, scale=scale)
     rows += _scale_row(fig)
@@ -706,7 +729,9 @@ def box_export(box, plan, outdir, prefix="", frame=None, scale=None,
         stl_check(fp)
         files.append(fp)
         files += render_view(p, lab == "开盖", os.path.join(outdir, pre + f"轴测图-{lab}"),
-                             items=it_, title=f"{plan['name']} · {plan['desc']} · {lab}")
+                             items=it_,
+                             title=f"{plan['name']} · {plan['desc']} · "
+                                   + ("组装状态" if lab == "组装" else "爆炸图（天盖提起）"))
     files.append(_md(outdir, pre + "参数表.md", [
         "# FEFCO 0312 有底无盖+平顶罩盖 参数表", ""] +
         [f"- {k}：{v}" for k, v in box_dim_rows(box, p)] +

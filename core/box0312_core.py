@@ -18,7 +18,8 @@ class Params:
     H: float = 200.0
     t: float = 7.0              # 天盖（lid）纸板厚度（t_lid；兼容 = 默认）
     t_base: float = 0.0         # 底箱（HSC）纸板厚度；0 → 与 t 相同
-    glue_w: float = 45.0
+    glue_w: float = 45.0        # 底箱粘舌（HSC 接舌）宽 —— 归属底箱
+    lid_glue_w: float = 0.0     # 天盖粘舌宽（3D 包角粘合表达）；0 → 与 glue_w 相同
     glue_inset: float = 4.0
     gap: float = 2.0
     cover_depth: float = 90.0   # lid wall face height (罩深)
@@ -51,6 +52,8 @@ class Params:
     def base_fi(self): return self.base_Wm / 2.0 - self.flap_reduce
     @property
     def lid_wall_blank(self): return self.cover_depth + self.tl / 2.0   # 93.5
+    @property
+    def lgw(self): return self.lid_glue_w if self.lid_glue_w > 0 else self.glue_w
 
 
 def _layout_strip(p, wm, lm, h, inset):
@@ -150,7 +153,24 @@ def panels(p):
     add("lid_wall_r", (tl, p.lid_Wm, wh2), (p.lid_Lm / 2, 0, zc2), "lid")
     add("lid_wall_f", (p.lid_Lm, tl, wh2), (0, -p.lid_Wm / 2, zc2), "lid")
     add("lid_wall_b", (p.lid_Lm, tl, wh2), (0, p.lid_Wm / 2, zc2), "lid")
-    add("lid_lap", (p.glue_w, tl, p.cover_depth - 8.0), (-p.lid_Lm / 2 + p.glue_w / 2, p.lid_Wm / 2 - tl, zc2), "lid")
+    add("lid_lap", (p.lgw, tl, p.cover_depth - 8.0), (-p.lid_Lm / 2 + p.lgw / 2, p.lid_Wm / 2 - tl, zc2), "lid")
+    return out
+
+
+# ---------------- 爆炸图（v1.0.16） ----------------
+def explode_items(items, p: Params, gap: float = None):
+    """底箱 / 天盖沿组装轴拉开成**爆炸图**：天盖向上、底箱向下。
+
+    位移按尺寸链算（天盖罩深 wh2 = 罩深 + t盖），保证「不穿插 + 可见间隙」——
+    旧实现只把天盖抬 120：闭合时两件本就是插接关系，抬一点仍像闭合（用户 2026-09-23 反馈）。
+    间隙 g 默认 = 天盖罩深，并夹在整箱高的 25%~60% 之间；位移按 7:3 分配给天盖/底箱，
+    使爆炸图整体仍居中。
+    """
+    wh2 = p.cover_depth + p.tl
+    g = float(gap) if gap is not None else min(max(p.cover_depth, 0.25 * p.H), 0.60 * p.H)
+    dz = wh2 + g
+    out = lift_items(items, "lid", 0.70 * dz)
+    out = lift_items(out, "static", -0.30 * dz)
     return out
 
 
@@ -195,6 +215,7 @@ def report(p: Params):
         ("罩深（天盖墙高）", f"{p.cover_depth:g}"),
         ("天盖墙板宽", f"{p.lid_wall_blank:g}（= 罩深 + t/2）"),
         ("底摇盖 外/内", f"{p.base_fo:g} / {p.base_fi:g}"),
+        ("粘舌 底箱/天盖", f"{p.glue_w:g} / {p.lgw:g}"),
         ("底箱展开", f"{ib['blank_w']:g} × {ib['blank_h']:g}"),
         ("天盖展开", f"{il['blank_w']:g} × {il['blank_h']:g}"),
         ("用纸合计（几何）", f"{area:.4f} m²"),

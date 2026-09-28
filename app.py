@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings()
-        self.setWindowTitle(f"{APP_NAME} 1.0.15")
+        self.setWindowTitle(f"{APP_NAME} 1.0.16")
         ic = theme.icon_path("app.ico")
         if os.path.exists(ic):
             self.setWindowIcon(QIcon(ic))
@@ -234,6 +234,12 @@ def main():
                        ("0312", dict(base="BC", lid="BC"))):
             r = backend.run_box(bx, (400, 300, 200), os.path.join(out, bx), prefix="ST", flutes=fl)
             print(bx, len(r.files), flush=True)
+        # v1.0.16：0312 底箱/天盖**混搭楞型**（接舌/摇盖归底箱 → 区间按底箱取）——
+        # 这条必须进冻结包自检：用户当场就是手点这个组合撞到「glue_w 超出标准区间」。
+        r = backend.run_box("0312", (1140, 740, 670), os.path.join(out, "0312mix"), prefix="ST",
+                            flutes=dict(base="BC", lid="C"))
+        _rows = dict(r.rows)
+        print("0312mix", len(r.files), "粘舌 底箱/天盖 =", _rows.get("粘舌 底箱/天盖"), flush=True)
         print("SELFTEST OK", out, flush=True)
         return 0
     if "--shot-dialog" in sys.argv:      # 自检：渲染设置/关于对话框

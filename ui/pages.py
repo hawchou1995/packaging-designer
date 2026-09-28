@@ -791,6 +791,8 @@ BOX_META = {
 }
 PARAM_DEFS = [("glue_w", "接舌宽"), ("flap_gain", "外摇盖加放"), ("flap_reduce", "内摇盖折减"),
               ("slot_w", "开槽宽"), ("gap", "盖/围框间隙"), ("cover_depth", "天盖罩深")]
+PART_LABEL = {"sleeve": "围框", "base": "底箱", "cap_top": "上盖", "cap_bottom": "下盖",
+              "body": "箱体", "lid": "天盖"}
 
 
 class BoxPage(BasePage):
@@ -919,20 +921,21 @@ class BoxPage(BasePage):
             out["cap_bottom"] = out["cap_top"]
         return out
 
+    def _owner_code(self, box, key):
+        """该工艺参数按**哪个部件**的楞型取区间（v1.0.16：接舌/摇盖归围框或底箱）。"""
+        owner = backend.param_owner(box, key)
+        if not owner:
+            owner = "cap_top" if box == "0310" else ("lid" if box == "0312" else "body")
+        return owner, self._flutes().get(owner, "BC")
+
     def _sync_params(self):
         box = self._box()
-        fl = self._flutes()
-        primary = "cap_top" if box == "0310" else ("lid" if box == "0312" else "body")
-        code = fl.get(primary, "BC")
-        # 0310 的接舌只在围框上 → 接舌宽的默认值与标准区间都按围框楞型取；
-        # 否则围框与盖混搭楞型时，同一个接舌宽不可能同时落进两档区间（v1.0.15 修）
-        sleeve_code = fl.get("sleeve", code)
         for key, row in self.p_rows.items():
             if key == "cover_depth":
                 row.widget.setRange(10.0, max(20.0, self.f_H.widget.value()))
                 row.set_hint("罩深 = 天盖墙高；建议 ≈ 0.45×H，且 ≤ 底箱制造高")
                 continue
-            kc = sleeve_code if (box == "0310" and key == "glue_w") else code
+            owner, kc = self._owner_code(box, key)
             d = backend.flute_defaults(kc, box)
             r = backend.ranges_of(kc, box)
             if key not in d:
@@ -944,14 +947,17 @@ class BoxPage(BasePage):
             row.widget.setRange(lo, hi)
             if not (lo - 1e-9 <= cur <= hi + 1e-9):
                 row.widget.setValue(d[key])
-            tail = "（按围框楞型）" if (box == "0310" and key == "glue_w") else ""
+            tail = (f"（按{PART_LABEL.get(owner, owner)}楞型）"
+                    if (backend.param_owner(box, key) and box != "0201") else "")
             src_txt = (r.get("src") if key == "gap"
                        else backend.ranges_of(kc).get("src", "GB/T 6543 + 行业实践"))
             row.set_hint(f"标准区间 {lo:g}–{hi:g} mm（{src_txt}）{tail}")
         if box == "0310":
             self._sync_cap_h()
         if self.f_allow_mode.seg.value() == "auto":
-            self.f_allow.widget.setValue(price_lib.allow_default(code))
+            _prim = "cap_top" if box == "0310" else ("lid" if box == "0312" else "body")
+            self.f_allow.widget.setValue(
+                price_lib.allow_default(self._flutes().get(_prim, "BC")))
             self.f_allow.widget.setEnabled(False)
         else:
             self.f_allow.widget.setEnabled(True)

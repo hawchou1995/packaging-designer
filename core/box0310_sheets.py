@@ -250,7 +250,8 @@ def build_sheet(p: Params, scale: float = None, page=(420.0, 297.0),
     from box0210_3d import add_iso_panels, build_items_from
     ic = items_closed if items_closed is not None else build_items_from(panels(p), False)
     io = items_open if items_open is not None else lift_items(lift_items(ic, "cap_bot", -70.0), "cap_top", 110.0)
-    add_iso_panels(fig, ic, io, cap1="组装状态（等轴测）", cap2="分解状态（上盖提起·下盖分离）")
+    add_iso_panels(fig, ic, io, cap1="组装状态（等轴测）",
+                   cap2="爆炸图（上盖 · 围框 · 下盖分离）")
     from dwgframe import draw_frame
     draw_frame(fig, page=page,
                name=meta.get("dwg_name") or meta.get("name") or f"FEFCO 0310 围框+两盖 {p.L:g}×{p.W:g}×{p.H:g}",

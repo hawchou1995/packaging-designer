@@ -150,6 +150,22 @@ def main():
                   "|", pg.busy.status.text()[:74])
             pg.f_H.widget.setValue(400.0); pg._touched()
         if box == "0312":
+            # v1.0.16：底箱与天盖**混搭楞型**必须能算（接舌/摇盖归底箱 → 区间按底箱取）
+            pg.f_mode.seg.set_value("outer"); pg._touched()
+            pg.f_L.widget.setValue(1140.0); pg.f_W.widget.setValue(740.0); pg.f_H.widget.setValue(670.0)
+            pg.flute_rows["base"].flute.set_value("BC"); pg.on_flute_changed()
+            pg.flute_rows["lid"].flute.set_value("C"); pg.refresh()
+            print("  0312 混搭楞型（底箱BC/天盖C）:",
+                  "可生成" if pg.btn_gen.isEnabled() else "被阻断: " + pg.busy.status.text()[:70],
+                  "| 接舌宽", pg.p_rows["glue_w"].widget.value(),
+                  "| 区间下限", pg.p_rows["glue_w"].widget.minimum())
+            pg.flute_rows["base"].flute.set_value("C"); pg.on_flute_changed()
+            pg.flute_rows["lid"].flute.set_value("AAA"); pg.refresh()
+            print("  0312 反向混搭（底箱C/天盖AAA）:",
+                  "可生成" if pg.btn_gen.isEnabled() else "被阻断: " + pg.busy.status.text()[:70],
+                  "| 接舌宽", pg.p_rows["glue_w"].widget.value())
+            pg.flute_rows["base"].flute.set_value("BC"); pg.on_flute_changed()
+            pg.flute_rows["lid"].flute.set_value("BC"); pg.refresh()
             pg.f_mode.seg.set_value("inner"); pg._touched()
             pg.f_L.widget.setValue(380); pg.f_W.widget.setValue(280); pg.f_H.widget.setValue(180)
             pg.f_scale.chk_auto.setChecked(False); pg.f_scale.sp.setValue(8.0)
